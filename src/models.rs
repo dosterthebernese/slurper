@@ -171,11 +171,15 @@ impl CryptoMarket {
 pub struct CryptoLiquidation {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub trade_date: DateTime<Utc>,
+    pub coin_metrics_id: String,
     pub price: f64,
     pub quantity: f64,
     pub market: String,
     pub tx_type: String,
-    pub cm_type: String
+    pub cm_type: String,
+    pub trade_llama_exchange: String,
+    pub trade_llama_instrument: String,
+    pub trade_llama_instrument_type: String,
 }
 
 impl CryptoLiquidation {
@@ -204,8 +208,9 @@ impl CryptoLiquidation {
 
 impl fmt::Display for CryptoLiquidation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<9} {:>6.2} {:>9.4} {:<30} {:<5} {:<5}", 
-            &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type, &self.cm_type)
+        write!(f, "{:<9} {:<9} {:>6.2} {:>9.4} {:<30} {:<5} {:<5} {:<30} {:<30} {:<30}", 
+            &self.coin_metrics_id, &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type, &self.cm_type,
+            &self.trade_llama_exchange, &self.trade_llama_instrument, &self.trade_llama_instrument_type)
     }
 }
 
@@ -218,7 +223,7 @@ impl fmt::Display for CryptoLiquidation {
 pub struct Trades<T> {
     pub vts: Vec<T>
 }
-impl Trades<CryptoTradeOpt> {
+impl Trades<CryptoTrade> {
 
     pub fn get_total_volume(self: &Self) -> Result<f64, ParseError> {
         let volume: f64 = self.vts.iter().map(|s| s.quantity).sum();
@@ -318,14 +323,24 @@ impl Trades<CryptoTradeOpt> {
 
 }
 
+
+
+
+
+
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CryptoTrade {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub trade_date: DateTime<Utc>,
+    pub coin_metrics_id: String,
     pub price: f64,
     pub quantity: f64,
     pub market: String,
-    pub tx_type: String
+    pub tx_type: String,
+    pub trade_llama_exchange: String,
+    pub trade_llama_instrument: String,
+    pub trade_llama_instrument_type: String,
 }
 impl CryptoTrade {
 
@@ -335,60 +350,22 @@ impl CryptoTrade {
 
 }
 
+
 impl fmt::Display for CryptoTrade {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<9} {:>6.2} {:>9.4} {:<30} {:<5}", 
-            &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type)
+        write!(f, "{:<9} {:<9} {:>6.2} {:>9.4} {:<30} {:<5} {:<30} {:<30} {:<30}", 
+            &self.coin_metrics_id, &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type, 
+            &self.trade_llama_exchange, &self.trade_llama_instrument, &self.trade_llama_instrument_type)
     }
 }
 
 
 
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CryptoTradeOpt {
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub trade_date: DateTime<Utc>,
-    pub price: f64,
-    pub quantity: f64,
-    pub market: String,
-    pub tx_type: String,
-    pub exchange: String,
-    pub instrument: String,
-    pub instrument_type: String
-}
-impl CryptoTradeOpt {
 
-    pub fn get_net(self: &Self) -> Result<f64, ParseError> {
-        Ok(&self.price * &self.quantity)
-    }
 
-    pub async fn get_comparables(self: &Self, lb: &i64, la: &i64, collection: &Collection<CryptoTradeOpt>) -> Result<Vec<CryptoTradeOpt>, Error> {
 
-        let gtedate = self.trade_date - Duration::milliseconds(*lb);
-        let ltdate = self.trade_date + Duration::milliseconds(*la);
 
-        let mut tradeslb: Vec<CryptoTradeOpt> = Vec::new();
-        let filter = doc! {"trade_date": {"$gte": gtedate, "$lt": ltdate}, "tx_type": &self.tx_type, "instrument": &self.instrument};
-        let find_options = FindOptions::builder().sort(doc! { "trade_date":1}).build();
-        let mut cursor = collection.find(filter, find_options).await?;
-        while let Some(trade) = cursor.try_next().await? {
-
-            tradeslb.push(trade.clone());                                        
-
-        }
-
-        Ok(tradeslb)
-
-    }
-}
-
-impl fmt::Display for CryptoTradeOpt {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<9} {:>6.2} {:>9.4} {:<30} {:<5} {:<30} {:<30} {:<30}", 
-            &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type, &self.exchange, &self.instrument, &self.instrument_type)
-    }
-}
 
 
 

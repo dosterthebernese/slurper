@@ -399,11 +399,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         if trade_date > big_bang {
                             let new_crypto_liq = CryptoLiquidation {
                                 trade_date: trade_date.with_timezone(&Utc),
+                                coin_metrics_id: cmditem.coin_metrics_id,
                                 price: cmditem.price.parse::<f64>().unwrap(),
                                 quantity: cmditem.amount.parse::<f64>().unwrap(),
                                 market: cmditem.market,
                                 tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string())                        
+                                cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string()),                        
+                                trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+                                trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+                                trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
                             };
                             println!("{}", new_crypto_liq);
                             let _result = lcollection.insert_one(new_crypto_liq, None).await?;                                    
@@ -422,11 +426,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                             if trade_date > big_bang {
                                 let new_crypto_liq = CryptoLiquidation {
                                     trade_date: trade_date.with_timezone(&Utc),
+                                    coin_metrics_id: cmditem.coin_metrics_id,
                                     price: cmditem.price.parse::<f64>().unwrap(),
                                     quantity: cmditem.amount.parse::<f64>().unwrap(),
                                     market: cmditem.market,
                                     tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                    cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string())                        
+                                    cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string()),                        
+                                    trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+                                    trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+                                    trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
                                 };
                                 println!("{}", new_crypto_liq);
                                 let _result = lcollection.insert_one(new_crypto_liq, None).await?;                                    
@@ -472,10 +480,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         if trade_date > big_bang {
                             let new_crypto_trade = CryptoTrade {
                                 trade_date: trade_date.with_timezone(&Utc),
+                                coin_metrics_id: cmditem.coin_metrics_id,
                                 price: cmditem.price.parse::<f64>().unwrap(),
                                 quantity: cmditem.amount.parse::<f64>().unwrap(),
                                 market: cmditem.market,
-                                tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string())                        
+                                tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
+                                trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+                                trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+                                trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
                             };
                             println!("{}", new_crypto_trade);
                             let _result = collection.insert_one(new_crypto_trade, None).await?;                                    
@@ -494,10 +506,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                             if trade_date > big_bang {
                                 let new_crypto_trade = CryptoTrade {
                                     trade_date: trade_date.with_timezone(&Utc),
+                                    coin_metrics_id: cmditem.coin_metrics_id,
                                     price: cmditem.price.parse::<f64>().unwrap(),
                                     quantity: cmditem.amount.parse::<f64>().unwrap(),
                                     market: cmditem.market,
-                                    tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string())
+                                    tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
+                                    trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+                                    trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+                                    trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
                                 };
                                 println!("{}", new_crypto_trade);
                                 let _result = collection.insert_one(new_crypto_trade, None).await?;                                    

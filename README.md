@@ -1,21 +1,5 @@
-### db.trades.createIndex({'company': 1})
-### db.trades.createIndex({'trade_date': 1})
-### db.waps.createIndex({'company': 1})
-### db.waps.createIndex({'gtedate': 1})
-### db.waps.createIndex({'ltdate': 1})
-### db.waps.createIndex({'accounts': 1})
-### db.quotes.createIndex({'trade_date': 1})
-### db.quotes.createIndex({'entity': 1})
-### db.quotes.createIndex({'symbol': 1})
-### db.katz.createIndex({'affinity_group_stats.accounts': 1})
-### db.katz.createIndex({'affinity_group_stats.gtedate': 1})
-### db.katz.createIndex({'affinity_group_stats.ltdate': 1})
-### db.katz.createIndex({'affinity_group_stats.security_ticker': 1})
-### db.positions.createIndex({'gtedate': 1})
-### db.positions.createIndex({'ltdate': 1})
-### db.positions.createIndex({'security_ticker': 1})
-### RUST_LOG=DEBUG cargo --bin build WHATEVER
 ### sudo apt-get install pkg-config libssl-dev
+### RUST_LOG=DEBUG cargo --bin build WHATEVER
 ### db.crypto.createIndex({'trade_date': 1})
 ### db.crypto.createIndex({'trade_date': 1, 'tx_type': 1})
 ### db.crypto.createIndex({'trade_date': 1, 'tx_type': 1, 'market': 1})
