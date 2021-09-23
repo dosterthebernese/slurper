@@ -92,7 +92,7 @@ struct CMDataWrapperMarkets {
 
 
 #[derive(Deserialize, Debug)]
-struct CMDataPrint {
+struct CMDataTSMarketTrades {
  //   #[serde(with = "chrono_datetime_as_bson_datetime")]
 //    time: DateTime<Utc>,
     time: String,
@@ -107,7 +107,7 @@ struct CMDataPrint {
 #[derive(Deserialize, Debug)]
 struct CMDataWrapperTSMarketData {
     #[serde(rename = "data", default)]
-    cmds: Vec<CMDataPrint>,
+    cmds: Vec<CMDataTSMarketTrades>,
     #[serde(rename = "next_page_token", default)]
     next_page_token: String,
     #[serde(rename = "next_page_url", default)]

@@ -366,6 +366,21 @@ impl fmt::Display for CryptoTrade {
 
 
 
+#[derive(Debug, Deserialize)]
+pub struct AggregationSummary {
+   pub _id: String,
+   #[serde(default)]
+   pub cnt: i64
+}
+
+impl fmt::Display for AggregationSummary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<30} {:>9}", &self._id, &self.cnt)
+    }
+}
+
+
+
 
 
 
