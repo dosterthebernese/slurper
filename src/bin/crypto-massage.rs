@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,TimeRange,AggregationSummary};
+use self::models::{CryptoTrade,TimeRange,RangeBoundAggregationSummaryInt,AggregationSummaryInt};
 
 use linfa::traits::Predict;
 use linfa::DatasetBase;
@@ -130,19 +130,25 @@ use csv::Writer;
 // }
 
 
-async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<AggregationSummary>, Box<dyn Error>> {
+async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundAggregationSummaryInt>, Box<dyn Error>> {
 
+    let description = format!("{:?} {:?}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
 
-    let mut rvec = Vec::new();
-    
+    let mut rvec = Vec::new();    
     let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
     let stage_group_market = doc! {"$group": {"_id": "$market", "cnt": { "$sum": 1 },}};
     let pipeline = vec![filter, stage_group_market];
 
     let mut results = collection.aggregate(pipeline, None).await?;
     while let Some(result) = results.next().await {
-       let doc: AggregationSummary = bson::from_document(result?)?;
-       rvec.push(doc);
+       let doc: AggregationSummaryInt = bson::from_document(result?)?;
+       let rbdoc = RangeBoundAggregationSummaryInt {
+        gtedate: tr.gtedate,
+        ltdate: tr.ltdate,
+        description: description.clone(),
+        aggregation_summary: doc
+       };
+       rvec.push(rbdoc);
     }
 
     Ok(rvec)
@@ -193,12 +199,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             info!("deleting the entire crypto collection, you should configure this for options");
             // collection.delete_many(doc!{}, None).await?;    
         },
-        "destroy-derivative" => {
-            warn!("You are deleting the entire crypto z and cluster DB - fuck, I should double check this.");
-            // zcollection.delete_many(doc!{}, None).await?;    
-            // zccollection.delete_many(doc!{}, None).await?;    
-        },
-
 
         "summary" => {
 
@@ -214,7 +214,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     match r {
                         Ok(aggsv) => {
                             for aggs in aggsv {
-                                print!("{}", aggs);
+                                println!("{}", aggs);
                             }
                         },
                         Err(error) => {
