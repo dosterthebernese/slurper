@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,TimeRange,RangeBoundAggregationSummaryInt,AggregationSummaryInt};
+use self::models::{CryptoTrade,TimeRange,RangeBoundAggregationSummary,AggregationSummary};
 
 use linfa::traits::Predict;
 use linfa::DatasetBase;
@@ -130,19 +130,19 @@ use csv::Writer;
 // }
 
 
-async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundAggregationSummaryInt>, Box<dyn Error>> {
+async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundAggregationSummary>, Box<dyn Error>> {
 
-    let description = format!("{:?} {:?}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
+    let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
 
     let mut rvec = Vec::new();    
     let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
-    let stage_group_market = doc! {"$group": {"_id": "$market", "cnt": { "$sum": 1 },}};
+    let stage_group_market = doc! {"$group": {"_id": "$market", "cnt": { "$sum": 1 }, "qty": { "$sum": "$quantity" },}};
     let pipeline = vec![filter, stage_group_market];
 
     let mut results = collection.aggregate(pipeline, None).await?;
     while let Some(result) = results.next().await {
-       let doc: AggregationSummaryInt = bson::from_document(result?)?;
-       let rbdoc = RangeBoundAggregationSummaryInt {
+       let doc: AggregationSummary = bson::from_document(result?)?;
+       let rbdoc = RangeBoundAggregationSummary {
         gtedate: tr.gtedate,
         ltdate: tr.ltdate,
         description: description.clone(),

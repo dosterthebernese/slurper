@@ -365,33 +365,34 @@ impl fmt::Display for CryptoTrade {
 
 
 #[derive(Debug, Deserialize)]
-pub struct AggregationSummaryInt {
+pub struct AggregationSummary {
    pub _id: String,
    #[serde(default)]
-   pub cnt: i64
+   pub cnt: f64,
+   pub qty: f64,
 }
 
-impl fmt::Display for AggregationSummaryInt {
+impl fmt::Display for AggregationSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<30} {:>9}", &self._id, &self.cnt)
+        write!(f, "{:<30} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.qty)
     }
 }
 
 
 
 #[derive(Debug, Deserialize)]
-pub struct RangeBoundAggregationSummaryInt {
+pub struct RangeBoundAggregationSummary {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub gtedate: DateTime<Utc>,
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub ltdate: DateTime<Utc>,    
     pub description: String,
-    pub aggregation_summary: AggregationSummaryInt
+    pub aggregation_summary: AggregationSummary
 }
 
-impl fmt::Display for RangeBoundAggregationSummaryInt {
+impl fmt::Display for RangeBoundAggregationSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9}", &self.gtedate, &self.ltdate, &self.description, &self.aggregation_summary._id, &self.aggregation_summary.cnt)
+        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.aggregation_summary._id, &self.aggregation_summary.cnt, &self.aggregation_summary.qty)
     }
 }
 
