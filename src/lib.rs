@@ -13,6 +13,7 @@ use time::Duration;
 pub const LOCAL_MONGO: &str = "mongodb://localhost:27017";
 pub const THE_DATABASE: &str = "tradellama";
 pub const THE_CRYPTO_COLLECTION: &str = "crypto";
+pub const THE_CRYPTO_RBAS_COLLECTION: &str = "rbas";
 pub const THE_CRYPTO_OPT_COLLECTION: &str = "cryptoopt";
 pub const THE_CRYPTO_LIQUIDATION_COLLECTION: &str = "cryptoliquidation";
 pub const THE_CRYPTOZ_COLLECTION: &str = "cryptoz";

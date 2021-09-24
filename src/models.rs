@@ -3,7 +3,7 @@ use crate::*;
 
 use serde::{Serialize,Deserialize};
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
-use chrono::{DateTime,Utc,TimeZone};
+use chrono::{DateTime,Utc,TimeZone,SecondsFormat};
 use chrono::format::ParseError;
 
 use mongodb::{Collection};
@@ -364,23 +364,25 @@ impl fmt::Display for CryptoTrade {
 
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AggregationSummary {
    pub _id: String,
    #[serde(default)]
    pub cnt: f64,
    pub qty: f64,
+   pub std: f64,
+   pub na: f64,
 }
 
 impl fmt::Display for AggregationSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<30} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.qty)
+        write!(f, "{:<30} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.qty, &self.std, &self.na)
     }
 }
 
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RangeBoundAggregationSummary {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub gtedate: DateTime<Utc>,
@@ -390,10 +392,47 @@ pub struct RangeBoundAggregationSummary {
     pub aggregation_summary: AggregationSummary
 }
 
+impl RangeBoundAggregationSummary {
+    pub fn get_csv(self: &Self) -> Result<RangeBoundAggregationSummaryCSV,ParseError> {
+        Ok(RangeBoundAggregationSummaryCSV {
+            gtedate: self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+            ltdate: self.ltdate.to_rfc3339(),
+            description: self.description.clone(),
+            market: self.aggregation_summary._id.clone(),
+            cnt: self.aggregation_summary.cnt,
+            qty: self.aggregation_summary.qty,
+            std: self.aggregation_summary.std,
+            na: self.aggregation_summary.na 
+        })
+    }
+
+}
+
 impl fmt::Display for RangeBoundAggregationSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.aggregation_summary._id, &self.aggregation_summary.cnt, &self.aggregation_summary.qty)
+        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.aggregation_summary._id, &self.aggregation_summary.cnt, &self.aggregation_summary.qty, &self.aggregation_summary.std, &self.aggregation_summary.na)
     }
+}
+
+
+#[derive(Debug, Serialize)]
+pub struct RangeBoundAggregationSummaryCSV {
+    #[serde(rename(serialize = "GTEDate"))]
+    gtedate: String,
+    #[serde(rename(serialize = "LTDate"))]
+    ltdate: String,
+    #[serde(rename(serialize = "Description"))]
+    description: String,
+    #[serde(rename(serialize = "Market"))]
+    market: String,
+    #[serde(rename(serialize = "CNT"))]
+    cnt: f64,
+    #[serde(rename(serialize = "QTY"))]
+    qty: f64,
+    #[serde(rename(serialize = "STD"))]
+    std: f64,
+    #[serde(rename(serialize = "NA"))]
+    na: f64,
 }
 
 
@@ -498,399 +537,11 @@ pub struct CryptoClusterCSV {
 
 
 
-#[derive(Debug, Serialize)]
-pub struct ImpactItem {
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,    
-    pub lookback: i64,
-    pub lookahead: i64,
-    #[serde(rename(serialize = "Market"))]
-    pub aggregation_thing: String,
-    #[serde(rename(serialize = "TX"))]
-    pub tx_type: String,
-    #[serde(rename(serialize = "NetDifference"))]
-    pub net_difference: f64
-}
-
-impl ImpactItem {
-    pub fn get_csv(self: &Self) -> Result<ImpactItemCSV,ParseError> {
-        Ok(ImpactItemCSV {
-            gtedate: self.gtedate.to_rfc3339(),
-            ltdate: self.gtedate.to_rfc3339(),
-            lookback: self.lookback,
-            lookahead: self.lookahead,
-            aggregation_thing: self.aggregation_thing.clone(),
-            tx_type: self.tx_type.clone(),
-            net_difference: self.net_difference
-        })
-    }
-}
-
-
-
-impl fmt::Display for ImpactItem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<9} {:<9} {:>8} {:>8} {:<30} {:<10} {:>10.2}", 
-            &self.gtedate, &self.ltdate, self.lookback, self.lookahead, &self.aggregation_thing, &self.tx_type, self.net_difference)
-    }
-}
-
-
-
-
-#[derive(Debug, Serialize)]
-pub struct ImpactItemCSV {
-    #[serde(rename(serialize = "BeginDate"))]
-    pub gtedate: String,
-    #[serde(rename(serialize = "EndDate"))]
-    pub ltdate: String,    
-    #[serde(rename(serialize = "Lookback"))]
-    pub lookback: i64,
-    #[serde(rename(serialize = "Lookahead"))]
-    pub lookahead: i64,
-    #[serde(rename(serialize = "Market Exchange"))]
-    aggregation_thing: String,
-    #[serde(rename(serialize = "TX"))]
-    tx_type: String,
-    #[serde(rename(serialize = "NetDifference"))]
-    net_difference: f64
-}
-
-
-
-#[derive(Debug, Serialize)]
-pub struct ADItem {
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,    
-    #[serde(rename(serialize = "Market"))]
-    pub market: String,
-    #[serde(rename(serialize = "TX"))]
-    pub tx_type: String,
-    #[serde(rename(serialize = "NetDifference"))]
-    pub net_amount: f64
-}
-
-impl ADItem {
-    pub fn get_csv(self: &Self) -> Result<ADItemCSV,ParseError> {
-        Ok(ADItemCSV {
-            gtedate: self.gtedate.to_rfc3339(),
-            ltdate: self.gtedate.to_rfc3339(),
-            market: self.market.clone(),
-            tx_type: self.tx_type.clone(),
-            net_amount: self.net_amount
-        })
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct ADItemCSV {
-    #[serde(rename(serialize = "BeginDate"))]
-    pub gtedate: String,
-    #[serde(rename(serialize = "EndDate"))]
-    pub ltdate: String,    
-    #[serde(rename(serialize = "Market"))]
-    market: String,
-    #[serde(rename(serialize = "TX"))]
-    tx_type: String,
-    #[serde(rename(serialize = "NetAmount"))]
-    net_amount: f64
-}
 
 
 
 
 
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RIA {
-    pub business_name: String,
-    pub crd: String,
-    pub sec: String,
-    pub total_employees: Option<f64>, //Approximately how many employees do you have? Include full- and part-time employees but do not include any clerical workers.
-    pub total_employees_investment_advisory: Option<f64>, //Approximately how many of the employees reported in 5.A. perform investment advisory functions (including research)?
-    pub reg_aum_discretionary: Option<f64>,
-    pub reg_aum_non_discretionary: Option<f64>,
-    pub reg_aum_total: Option<f64>,
-    pub reg_accounts_discretionary: Option<f64>,
-    pub reg_accounts_non_discretionary: Option<f64>,
-    pub reg_accounts_total: Option<f64>,
-    pub reg_aum_non_us_total: Option<f64>,
-    pub financial_planning: bool, //Financial planning services
-    pub pm_ind_smb: bool, //Portfolio management for individuals and/or small businesses
-    pub pm_ic_bdcs54: bool, //Portfolio management for investment companies (as well as “business development companies” that have made an election pursuant to section 54 of the Investment Company Act of 1940)
-    pub pm_piv_noic: bool, //Portfolio management for pooled investment vehicles (other than investment companies)
-    pub pm_b_icl_nosmb_no_ic_no_piv: bool, //Portfolio management for businesses (other than small businesses) or institutional clients (other than registered investment companies and other pooled investment vehicles) 
-    pub pension_consulting_services: bool, //Pension consulting services
-    pub selection: bool, //Selection of other advisers (including private fund managers)
-    pub publications: bool, //Publication of periodicals or newsletters
-    pub rating_pricing: bool, //Security ratings or pricing services
-    pub timing: bool, //Market timing services
-    pub education: bool, //Educational seminars/workshops
-    pub other: Option<String>,
-    pub wrap_fee: bool,
-    pub prop_ct_tx_with_clients: bool,
-    pub prop_ct_tx_and_reco_with_clients: bool,
-    pub prop_ct_other_reco_with_clients: bool,
-    pub si_ct_tx: bool,
-    pub si_ct_reco: bool,
-    pub si_ct_reco_other: bool,
-    pub bad_supervised_person: bool,
-    pub felony_conviction: bool, 
-    pub felony_charge: bool, 
-    pub misdemeanor_conviction: bool,
-    pub misdemeanor_charge: bool,
-    pub sec_cftc_false_statement: bool,
-    pub sec_ctfc_violation: bool,
-    pub sec_cftc_dsrr: bool,
-    pub sec_cftc_order: bool,
-    pub sec_cftc_money_cease: bool,
-    pub fed_state_foreign_reg_false_statement: bool,
-    pub fed_state_foreign_reg_violation: bool,
-    pub fed_state_foreign_reg_cause_dsrr: bool,
-    pub fed_state_foreign_reg_order: bool,
-    pub fed_state_foreign_reg_dsrr: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Prospect {
-    pub first_name: String,
-    pub last_name: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub last_spam_date: DateTime<Utc>,
-    pub email: String,
-    pub best_phone: Option<String>,
-    pub title: String,
-    pub company: String,
-    pub crd: Option<String>,
-    pub attributes: Vec<String>,
-    pub website: String,
-    pub notes: Option<String>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StatusUpdate {
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub began: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub updated: DateTime<Utc>,
-    pub status: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Opportunity {
-    pub company: String,
-    pub crd: Option<String>,
-    pub attributes: Vec<String>,
-    pub website: String,
-    pub status: Vec<StatusUpdate>,
-    pub notes: Option<String>
-}
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Quote {
-    pub symbol: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub trade_date: DateTime<Utc>,
-    pub open: f64,
-    pub close: f64,
-    pub high: f64,
-    pub low: f64,
-    pub volume: f64,
-    pub company: String,
-    pub entity: String
-}
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Trade {
-    pub account_id: String,
-    pub account_name: String,
-    pub security_ticker: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub trade_date: DateTime<Utc>,
-    pub price: f64,
-    pub quantity: f64,
-    pub commission: f64,
-    pub net_amount: f64,
-    pub tx_type: String,
-    pub broker: String,
-    pub source: String,
-    pub company: String,
-    pub entity: String
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WAP {
-    pub company: String,
-    pub security_ticker: String,
-    pub tx_type: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,
-    pub net_amount: f64,
-    pub volume: f64,
-    pub weighted_mean: f64,
-    pub accounts: Vec<String>,
-    pub t100_std: Option<f64>,
-    pub t100_performance: Option<f64>,
-    pub t100_wildest: Option<f64>,
-    pub f3_performance: Option<f64>,
-    pub f30_std: Option<f64>,
-    pub f30_performance: Option<f64>,
-    pub f30_wildest: Option<f64>,
-    pub t100_not_weighted_mean_volume: Option<f64>,
-    pub t100_std_volume: Option<f64>,
-    pub market_volume: Option<f64>
-}
-
-// you're doing this at the WAP level so doesn't need to be a vector!
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WAPContra {
-    pub company: String,
-    pub wap: WAP,
-    pub same_day_contra: Option<WAP>,
-    pub one_day_contra: Option<WAP>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Position {
-    pub company: String,
-    pub account_id: String,
-    pub account_name: String,
-    pub security_ticker: String,
-    pub direction: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,
-    pub quantity: f64
-}
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PositionQuantityVolatility {
-    pub company: String,
-    pub security_ticker: String,
-    pub direction: String,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,
-    pub normalized_std_deviation: f64
-}
-
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AffinityGroup {
-    pub company: String,
-    pub accounts: Vec<String>,
-    pub actions: i32,    
-    pub net_amount: f64,    
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub min_date: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub max_date: DateTime<Utc>,
-    pub actions_buys: Option<i32>,    
-    pub net_amount_buys: Option<f64>,    
-    pub net_amount_buys_mean: Option<f64>,    
-    pub net_amount_buys_std: Option<f64>,    
-    pub actions_sells: Option<i32>,    
-    pub net_amount_sells: Option<f64>,    
-    pub net_amount_sells_mean: Option<f64>,    
-    pub net_amount_sells_std: Option<f64>,    
-    pub actions_shorts: Option<i32>,    
-    pub net_amount_shorts: Option<f64>,    
-    pub net_amount_shorts_mean: Option<f64>,    
-    pub net_amount_shorts_std: Option<f64>,    
-    pub actions_covers: Option<i32>,    
-    pub net_amount_covers: Option<f64>,    
-    pub net_amount_covers_mean: Option<f64>,    
-    pub net_amount_covers_std: Option<f64>    
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AffinityGroupStats {
-    pub company: String,
-    pub accounts: Vec<String>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub gtedate: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub ltdate: DateTime<Utc>,
-    pub allocations: Vec<f64>,
-    pub net_amount: f64,    
-    pub mean_net_amount_z: Option<f64>,
-    pub weighted_mean: f64,
-    pub weighted_means: Vec<f64>,
-    pub tx_type: String,
-    pub security_ticker: String,
-    pub t100_std: Option<f64>,
-    pub t100_performance: Option<f64>,
-    pub t100_wildest: Option<f64>,
-    pub f3_performance: Option<f64>,
-    pub f30_std: Option<f64>,
-    pub f30_performance: Option<f64>,
-    pub f30_wildest: Option<f64>,
-    pub volume: f64,
-    pub market_volume: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Statz {
-    pub company: String,
-    pub affinity_group_stats: AffinityGroupStats,
-    pub zscores: Vec<Option<f64>>,
-    pub max_distance: Option<f64>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Katz {
-    pub company: String,
-    pub y_axis: String,
-    pub affinity_group_stats: AffinityGroupStats,
-    pub max_distance: f64,   // note this is not an option vs above some day need to settle this
-    pub cluster: i32
-}
-
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Vatz {
-    pub company: String,
-    pub wap: WAP,
-    pub same_day_contra_pct: Option<f64>,
-    pub one_day_contra_pct: Option<f64>,
-    pub pctv: f64,
-    pub dow: f64,
-    pub dom: f64,
-    pub participants: i32,    
-    pub cluster: i32
-}
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AffinityGroupAllocations {
-    pub company: String,
-    pub accounts: Vec<String>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub min_date: DateTime<Utc>,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub max_date: DateTime<Utc>,
-    pub weighted_mean_allocations_buys: Vec<Option<f64>>,
-    pub weighted_mean_allocations_buys_std: Vec<Option<f64>>,
-    pub weighted_mean_allocations_sells: Vec<Option<f64>>,
-    pub weighted_mean_allocations_sells_std: Vec<Option<f64>>,
-    pub weighted_mean_allocations_shorts: Vec<Option<f64>>,
-    pub weighted_mean_allocations_shorts_std: Vec<Option<f64>>,
-    pub weighted_mean_allocations_covers: Vec<Option<f64>>,
-    pub weighted_mean_allocations_covers_std: Vec<Option<f64>>
-}
 
 
 #[derive(Debug, Clone)]
@@ -916,6 +567,12 @@ impl TimeRange {
             time_ranges.push(tr);
         }
         Ok(time_ranges)
+    }
+
+    pub async fn delete_exact_range<T>(self: &Self, collection: &Collection<T>) -> Result<(),Error> {
+        collection.delete_many(doc!{"gtedate": &self.gtedate, "ltdate": &self.ltdate}, None).await?;    
+        debug!("deleted {} {}", &self.gtedate, &self.ltdate);
+        Ok(())
     }
 
 }

@@ -136,7 +136,10 @@ async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Col
 
     let mut rvec = Vec::new();    
     let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
-    let stage_group_market = doc! {"$group": {"_id": "$market", "cnt": { "$sum": 1 }, "qty": { "$sum": "$quantity" },}};
+    let stage_group_market = doc! {"$group": {"_id": "$market", 
+    "cnt": { "$sum": 1 }, "qty": { "$sum": "$quantity" }, 
+    "std": { "$stdDevPop": "$price" }, 
+    "na": { "$sum": {"$multiply": ["$price","$quantity"]}}, }};
     let pipeline = vec![filter, stage_group_market];
 
     let mut results = collection.aggregate(pipeline, None).await?;
@@ -188,6 +191,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
+    let rbascollection = database.collection::<RangeBoundAggregationSummary>(THE_CRYPTO_RBAS_COLLECTION);
+
 
     // let time_ranges = get_time_ranges("2021-09-17 00:00:00","2021-09-18 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
     let time_ranges = get_time_ranges("2021-09-21 00:00:00","2021-09-22 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
@@ -200,13 +205,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             // collection.delete_many(doc!{}, None).await?;    
         },
 
-        "summary" => {
+        "summary-hourlies" => {
 
             for otr in time_ranges{
                 let hourlies = otr.get_hourlies().unwrap();
                 assert_eq!(hourlies.len(),24);
+                
+                let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbascollection)).collect();
+                let _rdvec = join_all(dcol).await;
 
-                // let hcol: Vec<_> = (0..24).map(|n| sum_market_in_rust(&hourlies[n],&collection)).collect();
                 let hcol: Vec<_> = (0..24).map(|n| sum_market_trades_with_aggregation(&hourlies[n],&collection)).collect();
                 let rvec = join_all(hcol).await;
 
@@ -215,6 +222,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         Ok(aggsv) => {
                             for aggs in aggsv {
                                 println!("{}", aggs);
+                                let _result = rbascollection.insert_one(aggs, None).await?;                                                                
                             }
                         },
                         Err(error) => {
