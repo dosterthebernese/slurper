@@ -364,17 +364,23 @@ impl fmt::Display for CryptoTrade {
 
 
 
+
+
+
+
+
+
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AggregationSummary {
+pub struct MarketSummary {
    pub _id: String,
-   #[serde(default)]
    pub cnt: f64,
    pub qty: f64,
    pub std: f64,
    pub na: f64,
 }
 
-impl fmt::Display for AggregationSummary {
+impl fmt::Display for MarketSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:<30} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.qty, &self.std, &self.na)
     }
@@ -383,40 +389,40 @@ impl fmt::Display for AggregationSummary {
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RangeBoundAggregationSummary {
+pub struct RangeBoundMarketSummary {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub gtedate: DateTime<Utc>,
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub ltdate: DateTime<Utc>,    
     pub description: String,
-    pub aggregation_summary: AggregationSummary
+    pub market_summary: MarketSummary
 }
 
-impl RangeBoundAggregationSummary {
-    pub fn get_csv(self: &Self) -> Result<RangeBoundAggregationSummaryCSV,ParseError> {
-        Ok(RangeBoundAggregationSummaryCSV {
+impl RangeBoundMarketSummary {
+    pub fn get_csv(self: &Self) -> Result<RangeBoundMarketSummaryCSV,ParseError> {
+        Ok(RangeBoundMarketSummaryCSV {
             gtedate: self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
             ltdate: self.ltdate.to_rfc3339(),
             description: self.description.clone(),
-            market: self.aggregation_summary._id.clone(),
-            cnt: self.aggregation_summary.cnt,
-            qty: self.aggregation_summary.qty,
-            std: self.aggregation_summary.std,
-            na: self.aggregation_summary.na 
+            market: self.market_summary._id.clone(),
+            cnt: self.market_summary.cnt,
+            qty: self.market_summary.qty,
+            std: self.market_summary.std,
+            na: self.market_summary.na 
         })
     }
 
 }
 
-impl fmt::Display for RangeBoundAggregationSummary {
+impl fmt::Display for RangeBoundMarketSummary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.aggregation_summary._id, &self.aggregation_summary.cnt, &self.aggregation_summary.qty, &self.aggregation_summary.std, &self.aggregation_summary.na)
+        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.market_summary._id, &self.market_summary.cnt, &self.market_summary.qty, &self.market_summary.std, &self.market_summary.na)
     }
 }
 
 
 #[derive(Debug, Serialize)]
-pub struct RangeBoundAggregationSummaryCSV {
+pub struct RangeBoundMarketSummaryCSV {
     #[serde(rename(serialize = "GTEDate"))]
     gtedate: String,
     #[serde(rename(serialize = "LTDate"))]
@@ -437,103 +443,94 @@ pub struct RangeBoundAggregationSummaryCSV {
 
 
 
-
-
-
-
-
-
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CryptoTradez {
-    pub lookback: i64,
-    pub lookahead: i64,
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub trade_date: DateTime<Utc>,
-    pub price: f64,
-    pub wm_price: f64,
-    pub quantity: f64,
-    pub market: String,
-    pub tx_type: String,
-    pub z_score: Option<f64>,
+pub struct ExchangeSummaryKey {
+   pub trade_llama_exchange: String,
+   pub trade_llama_instrument_type: String,
+   pub tx_type: String,
 }
 
-impl CryptoTradez {
-    pub fn get_net(self: &Self) -> Result<f64, ParseError> {
-        Ok(&self.price * &self.quantity)
-    }
-    pub fn get_difference(self: &Self) -> Result<f64, ParseError> {
-        Ok((&self.price * &self.quantity) - (&self.wm_price * &self.quantity))
-    }
-}
-
-impl fmt::Display for CryptoTradez {
+impl fmt::Display for ExchangeSummaryKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let zstring = match self.z_score {
-            Some(z) => z.to_string(),
-            _ => "".to_string()
-        };
-        write!(f, "{:>4} {:>4} {:<9} {:>6.2} {:>6.2} {:>9.4} {:<30} {:<5} {:>6}", 
-            self.lookback, self.lookahead, &self.trade_date, self.price, self.wm_price, self.quantity, &self.market, &self.tx_type, zstring)
+        write!(f, "{:<30} {:<30} {:<30}", &self.trade_llama_exchange, &self.trade_llama_instrument_type, &self.tx_type)
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExchangeSummary {
+   pub _id: ExchangeSummaryKey,
+   pub cnt: f64,
+   pub na: f64,
+}
+
+impl fmt::Display for ExchangeSummary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<95} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.na)
     }
 }
 
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CryptoCluster {
-    pub lookback: i64,
-    pub lookahead: i64,
+pub struct RangeBoundExchangeSummary {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
-    pub trade_date: DateTime<Utc>,
-    pub price: f64,
-    pub wm_price: f64,
-    pub quantity: f64,
-    pub market: String,
-    pub exchange: String,
-    pub instrument_type: String,
-    pub tx_type: String,
-    pub z_score: f64,
-    pub cluster: i32
+    pub gtedate: DateTime<Utc>,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub ltdate: DateTime<Utc>,    
+    pub description: String,
+    pub exchange_summary: ExchangeSummary
 }
-impl CryptoCluster {
-    pub fn get_net(self: &Self) -> Result<f64, ParseError> {
-        Ok(&self.price * &self.quantity)
-    }
-    pub fn get_difference(self: &Self) -> Result<f64, ParseError> {
-        Ok((&self.price * &self.quantity) - (&self.wm_price * &self.quantity))
-    }
-    pub fn get_csv(self: &Self) -> Result<CryptoClusterCSV,ParseError> {
-        Ok(CryptoClusterCSV {
-            market: self.market.clone(),
-            exchange: self.exchange.clone(),
-            instrument_type: self.instrument_type.clone(),
-            tx_type: self.tx_type.clone(),
-            net_amount: self.get_net().unwrap(),
-            z_score: self.z_score,
-            cluster: self.cluster
+
+impl RangeBoundExchangeSummary {
+    pub fn get_csv(self: &Self) -> Result<RangeBoundExchangeSummaryCSV,ParseError> {
+        Ok(RangeBoundExchangeSummaryCSV {
+            gtedate: self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+            ltdate: self.ltdate.to_rfc3339(),
+            description: self.description.clone(),
+            trade_llama_exchange: self.exchange_summary._id.trade_llama_exchange.clone(),
+            trade_llama_instrument_type: self.exchange_summary._id.trade_llama_instrument_type.clone(),
+            tx_type: self.exchange_summary._id.tx_type.clone(),
+            cnt: self.exchange_summary.cnt,
+            na: self.exchange_summary.na 
         })
+    }
+
+}
+
+impl fmt::Display for RangeBoundExchangeSummary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.exchange_summary._id, &self.exchange_summary.cnt, &self.exchange_summary.na)
     }
 }
 
 
 #[derive(Debug, Serialize)]
-pub struct CryptoClusterCSV {
-    #[serde(rename(serialize = "Market"))]
-    market: String,
+pub struct RangeBoundExchangeSummaryCSV {
+    #[serde(rename(serialize = "GTEDate"))]
+    gtedate: String,
+    #[serde(rename(serialize = "LTDate"))]
+    ltdate: String,
+    #[serde(rename(serialize = "Description"))]
+    description: String,
     #[serde(rename(serialize = "Exchange"))]
-    exchange: String,
+    trade_llama_exchange: String,
     #[serde(rename(serialize = "InstrumentType"))]
-    instrument_type: String,
-    #[serde(rename(serialize = "TX"))]
+    trade_llama_instrument_type: String,
+    #[serde(rename(serialize = "TXType"))]
     tx_type: String,
-    #[serde(rename(serialize = "NetAmount"))]
-    net_amount: f64,
-    #[serde(rename(serialize = "Z"))]
-    z_score: f64,
-    #[serde(rename(serialize = "Cluster"))]
-    cluster: i32
+    #[serde(rename(serialize = "CNT"))]
+    cnt: f64,
+    #[serde(rename(serialize = "NA"))]
+    na: f64,
 }
+
+
+
+
+
+
+
 
 
 

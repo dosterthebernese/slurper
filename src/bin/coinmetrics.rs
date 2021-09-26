@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn};
 use std::error::Error;
-use self::models::{CryptoTrade, CryptoTradez, CryptoCluster, CryptoLiquidation, CryptoMarket, CryptoAsset, CapSuite};
+use self::models::{CryptoTrade, CryptoLiquidation, CryptoMarket, CryptoAsset, CapSuite};
 use chrono::{DateTime,Utc,TimeZone,SecondsFormat};
 
 use futures::stream::TryStreamExt;
@@ -224,20 +224,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
     let lcollection = database.collection::<CryptoLiquidation>(THE_CRYPTO_LIQUIDATION_COLLECTION);
-    let zcollection = database.collection::<CryptoTradez>(THE_CRYPTOZ_COLLECTION);
-    let zccollection = database.collection::<CryptoCluster>(THE_CRYPTOCLUSTER_COLLECTION);
     let capcollection = database.collection::<CapSuite>(THE_CRYPTO_CAP_SUITE_COLLECTION);
 
     match matches.value_of("INPUT").unwrap() {
-        "destroy" => {
-            warn!("You are deleting the entire crypto DB - fuck, I should double check this.");
-            info!("deleting the entire crypto collection, you should configure this for options");
-            collection.delete_many(doc!{}, None).await?;    
-            lcollection.delete_many(doc!{}, None).await?;    
-            zcollection.delete_many(doc!{}, None).await?;    
-            zccollection.delete_many(doc!{}, None).await?;    
-            capcollection.delete_many(doc!{}, None).await?;    
-        },
 
         "assets" => {
 

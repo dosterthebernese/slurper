@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,CryptoMarket,RangeBoundAggregationSummary,TimeRange};
+use self::models::{CryptoTrade,CryptoMarket,RangeBoundMarketSummary,RangeBoundExchangeSummary,TimeRange};
 
 use linfa::traits::Predict;
 use linfa::DatasetBase;
@@ -54,7 +54,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
-    let rbascollection = database.collection::<RangeBoundAggregationSummary>(THE_CRYPTO_RBAS_COLLECTION);
+    let rbmscollection = database.collection::<RangeBoundMarketSummary>(THE_CRYPTO_RBMS_COLLECTION);
+    let rbescollection = database.collection::<RangeBoundExchangeSummary>(THE_CRYPTO_RBES_COLLECTION);
 
     // let time_ranges = get_time_ranges("2021-09-13 00:00:00","2021-09-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
     // let time_ranges = get_time_ranges("2021-09-14 00:00:00","2021-09-15 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
@@ -63,23 +64,38 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     match matches.value_of("INPUT").unwrap() {
 
 
-        "usd-eth-spot-rbas" => {
+        "usd-eth-spot-rbms" => {
 
-            let mut wtr = Writer::from_path("/tmp/usd-eth-spot-rbas.csv")?;
+            let mut wtr = Writer::from_path("/tmp/usd-eth-spot-rbms.csv")?;
             let filter = doc! {};
-            let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "aggregation_summary._id": 1}).build();
-            let mut cursor = rbascollection.find(filter, find_options).await?;
-            while let Some(rbas) = cursor.try_next().await? {
-                println!("{}",rbas);
+            let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "market_summary._id": 1}).build();
+            let mut cursor = rbmscollection.find(filter, find_options).await?;
+            while let Some(rbms) = cursor.try_next().await? {
+                println!("{}",rbms);
                 let market = CryptoMarket {
-                    market: rbas.aggregation_summary._id.clone()
+                    market: rbms.market_summary._id.clone()
                 };
                 if market.drop_all_but_instrument_type().unwrap() == "spot" {
-                    wtr.serialize(rbas.get_csv().unwrap())?;                                                                            
+                    wtr.serialize(rbms.get_csv().unwrap())?;                                                                            
                 }
             }
             wtr.flush()?;
         },
+
+        "eth-rbes" => {
+
+            let mut wtr = Writer::from_path("/tmp/eth-rbes.csv")?;
+            let filter = doc! {};
+            let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "exchange_summary._id": 1}).build();
+            let mut cursor = rbescollection.find(filter, find_options).await?;
+            while let Some(rbes) = cursor.try_next().await? {
+                println!("{}",rbes);
+                wtr.serialize(rbes.get_csv().unwrap())?;                                                                            
+            }
+            wtr.flush()?;
+        },
+
+
 
         _ => {
             error!("i am tbd");

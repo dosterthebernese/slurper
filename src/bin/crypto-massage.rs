@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,TimeRange,RangeBoundAggregationSummary,AggregationSummary};
+use self::models::{CryptoTrade,TimeRange,RangeBoundMarketSummary,MarketSummary,RangeBoundExchangeSummary,ExchangeSummary};
 
 use linfa::traits::Predict;
 use linfa::DatasetBase;
@@ -130,7 +130,7 @@ use csv::Writer;
 // }
 
 
-async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundAggregationSummary>, Box<dyn Error>> {
+async fn agg_rbms<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundMarketSummary>, Box<dyn Error>> {
 
     let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
 
@@ -144,12 +144,38 @@ async fn sum_market_trades_with_aggregation<'a>(tr: &TimeRange, collection: &Col
 
     let mut results = collection.aggregate(pipeline, None).await?;
     while let Some(result) = results.next().await {
-       let doc: AggregationSummary = bson::from_document(result?)?;
-       let rbdoc = RangeBoundAggregationSummary {
+       let doc: MarketSummary = bson::from_document(result?)?;
+       let rbdoc = RangeBoundMarketSummary {
         gtedate: tr.gtedate,
         ltdate: tr.ltdate,
         description: description.clone(),
-        aggregation_summary: doc
+        market_summary: doc
+       };
+       rvec.push(rbdoc);
+    }
+
+    Ok(rvec)
+
+}
+
+async fn agg_rbes<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundExchangeSummary>, Box<dyn Error>> {
+
+    let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
+
+    let mut rvec = Vec::new();    
+    let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
+    let stage_group_market = doc! {"$group": {"_id": {"trade_llama_exchange": "$trade_llama_exchange", "trade_llama_instrument_type":"$trade_llama_instrument_type", "tx_type":"$tx_type"}, 
+    "cnt": { "$sum": 1 }, "na": { "$sum": {"$multiply": ["$price","$quantity"]}}, }};
+    let pipeline = vec![filter, stage_group_market];
+
+    let mut results = collection.aggregate(pipeline, None).await?;
+    while let Some(result) = results.next().await {
+       let doc: ExchangeSummary = bson::from_document(result?)?;
+       let rbdoc = RangeBoundExchangeSummary {
+        gtedate: tr.gtedate,
+        ltdate: tr.ltdate,
+        description: description.clone(),
+        exchange_summary: doc
        };
        rvec.push(rbdoc);
     }
@@ -191,11 +217,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
-    let rbascollection = database.collection::<RangeBoundAggregationSummary>(THE_CRYPTO_RBAS_COLLECTION);
+    let rbmscollection = database.collection::<RangeBoundMarketSummary>(THE_CRYPTO_RBMS_COLLECTION);
+    let rbescollection = database.collection::<RangeBoundExchangeSummary>(THE_CRYPTO_RBES_COLLECTION);
 
 
-    // let time_ranges = get_time_ranges("2021-09-17 00:00:00","2021-09-18 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
-    let time_ranges = get_time_ranges("2021-09-21 00:00:00","2021-09-22 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    // let time_ranges = get_time_ranges("2021-09-21 00:00:00","2021-09-22 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    // let time_ranges = get_time_ranges("2021-09-22 00:00:00","2021-09-23 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    // let time_ranges = get_time_ranges("2021-09-23 00:00:00","2021-09-24 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+    // let time_ranges = get_time_ranges("2021-09-24 00:00:00","2021-09-25 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+    let time_ranges = get_time_ranges("2021-09-25 00:00:00","2021-09-26 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+
+
+
+   // let time_ranges = get_time_ranges("2021-09-24 00:00:00","2021-09-25 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 
 
     match matches.value_of("INPUT").unwrap() {
@@ -207,14 +241,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "summary-hourlies" => {
 
-            for otr in time_ranges{
+            info!("Processing Market Summaries");
+            for otr in &time_ranges{
                 let hourlies = otr.get_hourlies().unwrap();
                 assert_eq!(hourlies.len(),24);
                 
-                let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbascollection)).collect();
+                let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbmscollection)).collect();
                 let _rdvec = join_all(dcol).await;
 
-                let hcol: Vec<_> = (0..24).map(|n| sum_market_trades_with_aggregation(&hourlies[n],&collection)).collect();
+                let hcol: Vec<_> = (0..24).map(|n| agg_rbms(&hourlies[n],&collection)).collect();
                 let rvec = join_all(hcol).await;
 
                 for (idx, r) in rvec.iter().enumerate() {
@@ -222,7 +257,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         Ok(aggsv) => {
                             for aggs in aggsv {
                                 println!("{}", aggs);
-                                let _result = rbascollection.insert_one(aggs, None).await?;                                                                
+                                let _result = rbmscollection.insert_one(aggs, None).await?;                                                                
                             }
                         },
                         Err(error) => {
@@ -233,6 +268,39 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
             }
+
+
+
+            info!("Processing Exchange Summaries");
+            for otr in &time_ranges{
+                let hourlies = otr.get_hourlies().unwrap();
+                assert_eq!(hourlies.len(),24);
+                
+                let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbescollection)).collect();
+                let _rdvec = join_all(dcol).await;
+
+                let hcol: Vec<_> = (0..24).map(|n| agg_rbes(&hourlies[n],&collection)).collect();
+                let rvec = join_all(hcol).await;
+
+                for (idx, r) in rvec.iter().enumerate() {
+                    match r {
+                        Ok(aggsv) => {
+                            for aggs in aggsv {
+                                println!("{}", aggs);
+                                let _result = rbescollection.insert_one(aggs, None).await?;                                                                
+                            }
+                        },
+                        Err(error) => {
+                            error!("Hour {:?} Error: {:?}", idx+1,  error);
+                            panic!("We choose to no longer live.")                            
+                        }
+                    }
+                }
+
+            }
+
+
+
 
         },
 
