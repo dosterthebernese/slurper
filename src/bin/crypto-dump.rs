@@ -3,7 +3,7 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,CryptoMarket,RangeBoundMarketSummary,RangeBoundExchangeSummary,TimeRange};
+use self::models::{CryptoTrade,CryptoMarket,RangeBoundLiquidationCluster,RangeBoundMarketSummary,RangeBoundExchangeSummary,TimeRange};
 
 use linfa::traits::Predict;
 use linfa::DatasetBase;
@@ -54,6 +54,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
+    let ccollection = database.collection::<RangeBoundLiquidationCluster>(THE_CRYPTOCLUSTER_COLLECTION);
     let rbmscollection = database.collection::<RangeBoundMarketSummary>(THE_CRYPTO_RBMS_COLLECTION);
     let rbescollection = database.collection::<RangeBoundExchangeSummary>(THE_CRYPTO_RBES_COLLECTION);
 
@@ -67,7 +68,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         "usd-eth-spot-rbms" => {
 
             let mut wtr = Writer::from_path("/tmp/usd-eth-spot-rbms.csv")?;
-            let filter = doc! {};
+            let filter = doc! {"description": "60 Trade Count"};
             let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "market_summary._id": 1}).build();
             let mut cursor = rbmscollection.find(filter, find_options).await?;
             while let Some(rbms) = cursor.try_next().await? {
@@ -82,6 +83,24 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             wtr.flush()?;
         },
 
+
+        "usd-eth-liquidation-rbms" => {
+
+            let mut wtr = Writer::from_path("/tmp/usd-eth-liquidation-rbms.csv")?;
+            let filter = doc! {"description": "60 Liquidation Count"};
+            let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "market_summary._id": 1}).build();
+            let mut cursor = rbmscollection.find(filter, find_options).await?;
+            while let Some(rbms) = cursor.try_next().await? {
+                println!("{}",rbms);
+                let market = CryptoMarket {
+                    market: rbms.market_summary._id.clone()
+                };
+                wtr.serialize(rbms.get_csv().unwrap())?;                                                                            
+            }
+            wtr.flush()?;
+        },
+
+
         "eth-rbes" => {
 
             let mut wtr = Writer::from_path("/tmp/eth-rbes.csv")?;
@@ -94,6 +113,20 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
             wtr.flush()?;
         },
+
+        "eth-rblc" => {
+
+            let mut wtr = Writer::from_path("/tmp/eth-rblc.csv")?;
+            let filter = doc! {};
+            let find_options = FindOptions::builder().sort(doc! { "gtedate":1, "tx_type": 1, "cluster": 1}).build();
+            let mut cursor = ccollection.find(filter, find_options).await?;
+            while let Some(rblc) = cursor.try_next().await? {
+                println!("{}",rblc);
+                wtr.serialize(rblc.get_csv().unwrap())?;                                                                            
+            }
+            wtr.flush()?;
+        },
+
 
 
 

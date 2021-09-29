@@ -2,7 +2,6 @@ pub mod models;
 
 use self::models::{TimeRange};
 
-
 use log::{debug,error};
 use std::error::Error;
 use std::fmt;
@@ -10,14 +9,23 @@ use charts::{Chart, VerticalBarView, ScaleBand, ScaleLinear, BarLabelPosition, A
 use chrono::{NaiveDateTime, DateTime, Utc};
 use time::Duration;
 
+use linfa::traits::Predict;
+use linfa::DatasetBase;
+use linfa_clustering::{KMeans};
+
+use ndarray::Array;
+use ndarray::{Axis, array};
+use ndarray_rand::rand::SeedableRng;
+use rand_isaac::Isaac64Rng;
+
+
+
 pub const LOCAL_MONGO: &str = "mongodb://localhost:27017";
 pub const THE_DATABASE: &str = "tradellama";
 pub const THE_CRYPTO_COLLECTION: &str = "crypto";
 pub const THE_CRYPTO_RBMS_COLLECTION: &str = "rbms";
 pub const THE_CRYPTO_RBES_COLLECTION: &str = "rbes";
-pub const THE_CRYPTO_OPT_COLLECTION: &str = "cryptoopt";
 pub const THE_CRYPTO_LIQUIDATION_COLLECTION: &str = "cryptoliquidation";
-pub const THE_CRYPTOZ_COLLECTION: &str = "cryptoz";
 pub const THE_CRYPTOCLUSTER_COLLECTION: &str = "cryptocluster";
 pub const THE_CRYPTO_CAP_SUITE_COLLECTION: &str = "cryptocapsuite";
 
@@ -392,6 +400,39 @@ pub fn std_deviation(data: &[f64]) -> Option<f64> {
         },
         _ => None
     }
+}
+
+
+
+pub fn do_duo_kmeans<'a>(v: &Vec<f64>) -> Vec<i32> {
+
+    let rng = Isaac64Rng::seed_from_u64(42);
+    let expected_centroids = array![[1000., 4.], [10000., 3.], [100000., 2.], [1000000., 1.],];
+//    let n = 10000;
+    let zdataset =  Array::from_shape_vec((v.len() / 2, 2), v.to_vec()).unwrap();
+    let dataset = DatasetBase::from(zdataset);
+    let n_clusters = expected_centroids.len_of(Axis(0));
+    let model = KMeans::params_with_rng(n_clusters, rng)
+        .max_n_iterations(200)
+        .tolerance(1e-5)
+        .fit(&dataset)
+        .expect("KMeans fitted");
+    let dataset = model.predict(dataset);
+    let DatasetBase {
+        records, targets, ..
+    } = dataset;
+
+    let mut rvec = Vec::new();
+
+    for idx in 0..(v.len() / 2) {
+        let k = targets[idx] as i32;
+        rvec.push(k);
+    }
+
+    assert_eq!(v.len() / 2, rvec.len());
+
+    rvec
+
 }
 
 

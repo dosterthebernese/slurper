@@ -3,16 +3,8 @@ use slurper::*;
 
 use log::{info,debug,warn,error};
 use std::error::Error;
-use self::models::{CryptoTrade,TimeRange,RangeBoundMarketSummary,MarketSummary,RangeBoundExchangeSummary,ExchangeSummary};
+use self::models::{CryptoTrade,CryptoLiquidation,Trades,TimeRange,RangeBoundLiquidationCluster,RangeBoundMarketSummary,MarketSummary,RangeBoundExchangeSummary,ExchangeSummary};
 
-use linfa::traits::Predict;
-use linfa::DatasetBase;
-use linfa_clustering::{KMeans};
-
-use ndarray::Array;
-use ndarray::{Axis, array};
-use ndarray_rand::rand::SeedableRng;
-use rand_isaac::Isaac64Rng;
 
 
 use futures::stream::TryStreamExt;
@@ -130,9 +122,10 @@ use csv::Writer;
 // }
 
 
-async fn agg_rbms<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundMarketSummary>, Box<dyn Error>> {
 
-    let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
+async fn agg_rbms<'a, T>(description_surname: &'a str, tr: &TimeRange, collection: &Collection<T>) -> Result<Vec<RangeBoundMarketSummary>, Box<dyn Error>> {
+
+    let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), description_surname);
 
     let mut rvec = Vec::new();    
     let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
@@ -157,6 +150,7 @@ async fn agg_rbms<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> R
     Ok(rvec)
 
 }
+
 
 async fn agg_rbes<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundExchangeSummary>, Box<dyn Error>> {
 
@@ -217,19 +211,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
     let collection = database.collection::<CryptoTrade>(THE_CRYPTO_COLLECTION);
+    let ccollection = database.collection::<RangeBoundLiquidationCluster>(THE_CRYPTOCLUSTER_COLLECTION);
+    let lcollection = database.collection::<CryptoLiquidation>(THE_CRYPTO_LIQUIDATION_COLLECTION);
     let rbmscollection = database.collection::<RangeBoundMarketSummary>(THE_CRYPTO_RBMS_COLLECTION);
     let rbescollection = database.collection::<RangeBoundExchangeSummary>(THE_CRYPTO_RBES_COLLECTION);
-
 
     // let time_ranges = get_time_ranges("2021-09-21 00:00:00","2021-09-22 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
     // let time_ranges = get_time_ranges("2021-09-22 00:00:00","2021-09-23 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
     // let time_ranges = get_time_ranges("2021-09-23 00:00:00","2021-09-24 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
     // let time_ranges = get_time_ranges("2021-09-24 00:00:00","2021-09-25 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
-    let time_ranges = get_time_ranges("2021-09-25 00:00:00","2021-09-26 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+    // let time_ranges = get_time_ranges("2021-09-25 00:00:00","2021-09-26 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+    let time_ranges = get_time_ranges("2021-09-26 00:00:00","2021-09-27 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
 
-
-
-   // let time_ranges = get_time_ranges("2021-09-24 00:00:00","2021-09-25 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    let time_ranges_for_all_in_ml = get_time_ranges("2021-09-21 00:00:00","2021-09-27 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 
 
     match matches.value_of("INPUT").unwrap() {
@@ -239,19 +233,70 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             // collection.delete_many(doc!{}, None).await?;    
         },
 
+        "cluster-liquidations-by-day" => {
+
+            // info!("Processing Liquidation Summaries");
+            // for otr in &time_ranges{
+            //     let hourlies = otr.get_hourlies().unwrap();
+            //     assert_eq!(hourlies.len(),24);                
+            //     let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&lcollection)).collect();                
+            // }
+
+            let mut lvec = Vec::new();
+            let txl = vec!["buy","sell"];
+
+            for tx in txl {
+    
+                for tr in &time_ranges_for_all_in_ml {
+                    tr.delete_exact_range(&ccollection);
+                    let filter = doc! {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}, "tx_type": tx };
+                    let find_options = FindOptions::builder().sort(doc! { "trade_date":1}).build(); // cannot sort on such big entries
+                    let mut cursor = lcollection.find(filter, find_options).await?;
+                    while let Some(liquidation) = cursor.try_next().await? {
+                        lvec.push(liquidation);
+                    }        
+
+                    let liquidations = Trades {
+                        vts: lvec.clone()
+                    };
+                    let (p,q,pq,km) = liquidations.get_pqkm().unwrap();
+                    for (idx, l) in liquidations.vts.iter().enumerate() {
+                        assert_eq!(l.price, p[idx]);
+                        assert_eq!(l.quantity, q[idx]);
+                        let new_range_bound_liquidation_cluster = RangeBoundLiquidationCluster {
+                            gtedate: tr.gtedate,
+                            ltdate: tr.ltdate,
+                            tx_type: tx.to_string().clone(),
+                            price: p[idx],
+                            quantity: q[idx],
+                            cluster: km[idx]
+                        };
+                        let _result = ccollection.insert_one(new_range_bound_liquidation_cluster, None).await?;                                                                
+                    }
+
+                }
+
+            }
+
+        },
+
+
+
         "summary-hourlies" => {
 
             info!("Processing Market Summaries");
             for otr in &time_ranges{
                 let hourlies = otr.get_hourlies().unwrap();
                 assert_eq!(hourlies.len(),24);
-                
+
+                warn!("this delete concurrency run does not specify description, so both trade and liquidation summs are deleted");
                 let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbmscollection)).collect();
                 let _rdvec = join_all(dcol).await;
 
-                let hcol: Vec<_> = (0..24).map(|n| agg_rbms(&hourlies[n],&collection)).collect();
+                let hcol: Vec<_> = (0..24).map(|n| agg_rbms("Trade Count", &hourlies[n],&collection)).collect();
                 let rvec = join_all(hcol).await;
 
+                debug!("first trades");
                 for (idx, r) in rvec.iter().enumerate() {
                     match r {
                         Ok(aggsv) => {
@@ -266,6 +311,27 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
+
+
+                debug!("now liquidations");
+                let hcollq: Vec<_> = (0..24).map(|n| agg_rbms("Liquidation Count", &hourlies[n],&lcollection)).collect();
+                let rveclq = join_all(hcollq).await;
+
+                for (idx, r) in rveclq.iter().enumerate() {
+                    match r {
+                        Ok(aggsv) => {
+                            for aggs in aggsv {
+                                println!("{}", aggs);
+                                let _result = rbmscollection.insert_one(aggs, None).await?;                                                                
+                            }
+                        },
+                        Err(error) => {
+                            error!("Hour {:?} Error: {:?}", idx+1,  error);
+                            panic!("We choose to no longer live.")                            
+                        }
+                    }
+                }
+
 
             }
 

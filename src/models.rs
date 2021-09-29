@@ -188,22 +188,42 @@ impl CryptoLiquidation {
         Ok(&self.price * &self.quantity)
     }
 
-    pub async fn get_comparables(self: &Self, lb: &i64, la: &i64, collection: &Collection<CryptoLiquidation>) -> Result<Vec<CryptoLiquidation>, Error> {
+    pub async fn get_comparables(self: &Self, lb: &i64, la: &i64, collection: &Collection<CryptoTrade>) -> Result<Vec<CryptoTrade>, Error> {
 
         let gtedate = self.trade_date - Duration::milliseconds(*lb);
         let ltdate = self.trade_date + Duration::milliseconds(*la);
 
-        let mut crys: Vec<CryptoLiquidation> = Vec::new();
-        let filter = doc! {"trade_date": {"$gte": gtedate, "$lt": ltdate}, "tx_type": &self.tx_type, "market": &self.market, "cm_type": &self.cm_type};
+        let mut crts: Vec<CryptoTrade> = Vec::new();
+        let filter = doc! {"trade_date": {"$gte": gtedate, "$lt": ltdate}, "tx_type": &self.tx_type, "market": &self.market};
         let find_options = FindOptions::builder().sort(doc! { "trade_date":1}).build();
         let mut cursor = collection.find(filter, find_options).await?;
-        while let Some(cry) = cursor.try_next().await? {
-            crys.push(cry.clone());                
+        while let Some(crt) = cursor.try_next().await? {
+            crts.push(crt.clone());                
         }
 
-        Ok(crys)
+        Ok(crts)
 
     }
+
+
+    pub async fn get_comparable_spots(self: &Self, lb: &i64, la: &i64, collection: &Collection<CryptoTrade>) -> Result<Vec<CryptoTrade>, Error> {
+
+        let gtedate = self.trade_date - Duration::milliseconds(*lb);
+        let ltdate = self.trade_date + Duration::milliseconds(*la);
+
+        let mut crts: Vec<CryptoTrade> = Vec::new();
+        let filter = doc! {"trade_date": {"$gte": gtedate, "$lt": ltdate}, "tx_type": &self.tx_type, "trade_llama_instrument_type": "spot"};
+        let find_options = FindOptions::builder().sort(doc! { "trade_date":1}).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+        while let Some(crt) = cursor.try_next().await? {
+            crts.push(crt.clone());                
+        }
+
+        Ok(crts)
+
+    }
+
+
 }
 
 impl fmt::Display for CryptoLiquidation {
@@ -223,6 +243,7 @@ impl fmt::Display for CryptoLiquidation {
 pub struct Trades<T> {
     pub vts: Vec<T>
 }
+
 impl Trades<CryptoTrade> {
 
     pub fn get_total_volume(self: &Self) -> Result<f64, ParseError> {
@@ -322,6 +343,82 @@ impl Trades<CryptoTrade> {
 
 
 }
+
+
+
+impl Trades<CryptoLiquidation> {
+
+    pub fn get_total_volume(self: &Self) -> Result<f64, ParseError> {
+        let volume: f64 = self.vts.iter().map(|s| s.quantity).sum();
+        Ok(volume)
+    }
+
+    fn get_vector_of_prices(self: &Self) -> Result<Vec<f64>, ParseError> {
+        let vector_of_prices: Vec<f64> = self.vts.iter().map(|s|s.price).collect();
+        Ok(vector_of_prices)        
+    }
+    
+    fn get_vector_of_quantities(self: &Self) -> Result<Vec<f64>, ParseError> {
+        let vector_of_quantities: Vec<f64> = self.vts.iter().map(|s|s.quantity).collect();
+        Ok(vector_of_quantities)        
+    }
+
+    fn get_vector_of_prices_and_quantities(self: &Self) -> Result<Vec<f64>, ParseError> {
+        let vp = self.get_vector_of_prices().unwrap();
+        let vq = self.get_vector_of_quantities().unwrap();
+        let mut rvec = Vec::new();
+        for (idx, p) in vp.iter().enumerate() {
+            rvec.push(*p);
+            rvec.push(vq[idx]);
+        }
+        Ok(rvec)
+    }
+
+    pub fn get_pqkm(self: &Self) -> Result<(Vec<f64>,Vec<f64>,Vec<f64>,Vec<i32>), Error> {
+        let p = self.get_vector_of_prices().unwrap();
+        let q = self.get_vector_of_quantities().unwrap();
+        let pq = self.get_vector_of_prices_and_quantities().unwrap();
+        let rkm = do_duo_kmeans(&pq);
+        Ok((p,q,pq,rkm))
+    }
+
+
+
+    pub fn get_weighted_mean(self: &Self) -> Result<WeightedMean, ParseError> {
+        let vector_of_quantities = self.get_vector_of_quantities().unwrap();
+        let vector_of_prices = self.get_vector_of_prices().unwrap();
+        let wm: WeightedMean = vector_of_prices.clone().iter().zip(vector_of_quantities.clone()).map(|(x,w)| (x.clone(),w.clone())).collect();    
+        assert_eq!(wm.sum_weights(), self.get_total_volume().unwrap());
+        Ok(wm)
+    }
+
+
+    pub fn get_standard_deviation_of_prices(self: &Self) -> Result<Option<f64>, ParseError> {
+        let vector_of_prices = self.get_vector_of_prices().unwrap();
+        // using a local lib std deviation as rust std libs a little bit of a pain - should change - not this is from affinities process
+        let std = std_deviation(&vector_of_prices);
+        Ok(std)
+    }
+
+    pub fn get_standard_deviation_of_quantities(self: &Self) -> Result<Option<f64>, ParseError> {
+        let vector_of_quantities = self.get_vector_of_quantities().unwrap();
+        // using a local lib std deviation as rust std libs a little bit of a pain - should change - not this is from affinities process
+        let std = std_deviation(&vector_of_quantities);
+        Ok(std)
+    }
+
+    pub fn get_not_weighted_mean_of_quantities(self: &Self) -> Result<Option<f64>, ParseError> {
+        let vector_of_quantities = self.get_vector_of_quantities().unwrap();
+        Ok(mean(&vector_of_quantities))
+    }
+
+
+}
+
+
+
+
+
 
 
 
@@ -526,6 +623,59 @@ pub struct RangeBoundExchangeSummaryCSV {
 }
 
 
+
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RangeBoundLiquidationCluster {
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub gtedate: DateTime<Utc>,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub ltdate: DateTime<Utc>,   
+    pub tx_type: String, 
+    pub price: f64,
+    pub quantity: f64,
+    pub cluster: i32
+}
+
+impl RangeBoundLiquidationCluster {
+    pub fn get_csv(self: &Self) -> Result<RangeBoundLiquidationClusterCSV,ParseError> {
+        Ok(RangeBoundLiquidationClusterCSV {
+            gtedate: self.gtedate.to_rfc3339(),
+            ltdate: self.ltdate.to_rfc3339(),
+            tx_type: self.tx_type.clone(),
+            price: self.price,
+            quantity: self.quantity,
+            cluster: self.cluster 
+        })
+    }
+
+}
+
+
+
+impl fmt::Display for RangeBoundLiquidationCluster {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<30} {:<30} {:<10} {:>9.2} {:>9.4} {:>4}", &self.gtedate, &self.ltdate, &self.tx_type, &self.price, &self.quantity, &self.cluster)
+    }
+}
+
+
+#[derive(Debug, Serialize)]
+pub struct RangeBoundLiquidationClusterCSV {
+    #[serde(rename(serialize = "GTEDate"))]
+    gtedate: String,
+    #[serde(rename(serialize = "LTDate"))]
+    ltdate: String,
+    #[serde(rename(serialize = "TXType"))]
+    tx_type: String,
+    #[serde(rename(serialize = "Price"))]
+    price: f64,
+    #[serde(rename(serialize = "Quantity"))]
+    quantity: f64,
+    #[serde(rename(serialize = "Cluster"))]
+    cluster: i32,
+}
 
 
 
