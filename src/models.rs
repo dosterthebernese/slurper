@@ -687,6 +687,177 @@ pub struct RangeBoundLiquidationClusterCSV {
 
 
 
+#[derive(Deserialize, Debug)]
+pub struct PhemexProduct {
+    #[serde(rename = "symbol", default)]
+    pub symbol: String,
+    #[serde(rename = "type", default)]
+    pub product_type: String,
+}
+impl fmt::Display for PhemexProduct {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<20}", self.symbol, self.product_type)
+    }
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexCurrency {
+    #[serde(rename = "currency", default)]
+    pub currency: String,
+    #[serde(rename = "name", default)]
+    pub name: String,
+}
+impl fmt::Display for PhemexCurrency {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<20}", self.currency, self.name)
+    }
+}
+
+
+#[derive(Deserialize, Debug)]   
+pub struct PhemexData {
+    #[serde(rename = "ratioScale", default)]
+    ratio_scale: i32,
+    #[serde(rename = "currencies", default)]
+    pub currencies: Vec<PhemexCurrency>,
+    #[serde(rename = "products", default)]
+    pub products: Vec<PhemexProduct>
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexDataWrapperProducts {
+    code: i32,
+    msg: String,
+    pub data: PhemexData
+}
+
+
+
+
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexPosition {
+    #[serde(rename = "accountId", default)]
+    account_id: i32,
+    #[serde(rename = "symbol", default)]
+    symbol: String,
+    #[serde(rename = "currency", default)]
+    currency: String,
+    #[serde(rename = "side", default)]
+    side: String,
+    #[serde(rename = "positionStatus", default)]
+    position_status: String,
+    #[serde(rename = "crossMargin", default)]
+    cross_margin: bool,
+    #[serde(rename = "leverageEr", default)]
+    leverage_er: i64,
+    #[serde(rename = "initMarginReqEr", default)]
+    init_margin_req_er: i64,
+    #[serde(rename = "maintMarginReqEr", default)]
+    maint_margin_req_er: i64,
+    #[serde(rename = "riskLimitEv", default)]
+    risk_limit_ev: i64,
+    #[serde(rename = "size", default)]
+    size: i64,
+    #[serde(rename = "valueEv", default)]
+    value_ev: i64,
+    #[serde(rename = "avgEntryPriceEp", default)]
+    avg_entry_price_ep: i64,
+    #[serde(rename = "posCostEv", default)]
+    pos_cost_ev: i64,
+    #[serde(rename = "assignedPosBalanceEv", default)]
+    assigned_pos_balance_ev: i64,
+    #[serde(rename = "bankruptCommEv", default)]
+    bankrupt_comm_ev: i64,
+    #[serde(rename = "bankruptPriceEp", default)]
+    bankrupt_price_ep: i64,
+    #[serde(rename = "positionMarginEv", default)]
+    position_margin_ev: i64,
+    #[serde(rename = "liquidationPriceEp", default)]
+    liquidation_price_ep: i64,
+    #[serde(rename = "deleveragePercentileEr", default)]
+    deleverage_percentile_er: i64,
+    #[serde(rename = "buyValueToCostEr", default)]
+    buy_value_to_cost_er: i64,
+    #[serde(rename = "sellValueToCostEr", default)]
+    sell_value_to_cost_er: i64,
+    #[serde(rename = "markPriceEp", default)]
+    mark_price_ep: i64,
+    #[serde(rename = "markValueEv", default)]
+    mark_value_ev: i64,
+    #[serde(rename = "unRealisedPosLossEv", default)]
+    unrealised_pos_loss_ev: i64,
+    #[serde(rename = "estimatedOrdLossEv", default)]
+    estimated_ord_loss_ev: i64,
+    #[serde(rename = "usedBalanceEv", default)]
+    used_balance_ev: i64,
+    #[serde(rename = "takeProfitEp", default)]
+    take_profit_ep: i64,
+    #[serde(rename = "stopLossEp", default)]
+    stop_loss_ep: i64,
+    #[serde(rename = "cumClosedPnlEv", default)]
+    cum_closed_pnl_ev: i64,
+    #[serde(rename = "cumFundingFeeEv", default)]
+    cum_funding_fee_ev: i64,
+    #[serde(rename = "cumTransactFeeEv", default)]
+    cum_transact_fee_ev: i64,
+    #[serde(rename = "realisedPnlEv", default)]
+    realised_pnl_ev: i64,
+    #[serde(rename = "unRealisedPnlEv", default)]
+    unrealised_pnl_ev: i64,
+    #[serde(rename = "cumRealisedPnlEv", default)]
+    cum_realised_pnl_ev: i64,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexAccount {
+    #[serde(rename = "accountId", default)]
+    pub account_id: i32,
+    #[serde(rename = "currency", default)]
+    pub currency: String,
+    #[serde(rename = "accountBalanceEv", default)]
+    pub account_balance_ev: f64,
+    #[serde(rename = "totalUsedBalanceEv", default)]
+    pub total_used_balance_ev: f64,
+    #[serde(rename = "positions", default)]
+    pub positions: Vec<PhemexPosition>,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexDataWrapperAccount {
+    code: i32,
+    msg: String,
+    pub data: PhemexAccount
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
