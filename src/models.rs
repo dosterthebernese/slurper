@@ -877,8 +877,87 @@ pub struct PhemexDataWrapperAccount {
 }
 
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TLPhemexMDSnapshot {
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub snapshot_date: DateTime<Utc>,
+    #[serde(rename = "symbol", default)]
+    pub symbol: String,
+     #[serde(rename = "open", default)]
+    pub open: i64,
+    #[serde(rename = "high", default)]
+    pub high: i64,
+    #[serde(rename = "low", default)]
+    pub low: i64,
+    #[serde(rename = "close", default)]
+    pub close: i64,
+    #[serde(rename = "indexPrice", default)]
+    pub index_price: i64,
+    #[serde(rename = "markPrice", default)]
+    pub mark_price: i64,
+    #[serde(rename = "openInterest", default)]
+    pub open_interest: i64,
+}
+
+impl TLPhemexMDSnapshot {
+
+    pub async fn get_history(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<Vec<TLPhemexMDSnapshot>, Error> {
+
+        let ltdate = self.snapshot_date - Duration::milliseconds(*lb);
+
+        let mut crts: Vec<TLPhemexMDSnapshot> = Vec::new();
+        let filter = doc! {"snapshot_date": {"$lt": ltdate}, "symbol": &self.symbol};
+        let find_options = FindOptions::builder().sort(doc! { "snapshot_date":1}).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+        while let Some(crt) = cursor.try_next().await? {
+            crts.push(crt.clone());                
+        }
+        Ok(crts)
+    }
+
+    pub async fn get_open_interest_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
+        let h = self.get_history(&lb, &collection).await.unwrap();
+        let d = (h[h.len()-1].open_interest as f64 - h[0].open_interest as f64) / h[0].open_interest as f64;
+        Ok(d*100.00)
+    }
 
 
+
+}
+
+
+impl fmt::Display for TLPhemexMDSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:<10}", self.snapshot_date, self.symbol, self.open_interest)
+    }
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexMD {
+    #[serde(rename = "open", default)]
+    pub open: i64,
+    #[serde(rename = "high", default)]
+    pub high: i64,
+    #[serde(rename = "low", default)]
+    pub low: i64,
+    #[serde(rename = "close", default)]
+    pub close: i64,
+    #[serde(rename = "indexPrice", default)]
+    pub index_price: i64,
+    #[serde(rename = "markPrice", default)]
+    pub mark_price: i64,
+    #[serde(rename = "openInterest", default)]
+    pub open_interest: i64,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct PhemexDataWrapperMD {
+    error: Option<String>,
+    id: i32,
+    pub result: PhemexMD
+}
 
 
 

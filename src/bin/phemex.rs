@@ -1,11 +1,11 @@
 // this use statement gets you access to the lib file
 use slurper::*;
 
-use log::{info,debug,warn};
+use log::{info,debug};
 use std::error::Error;
-use std::convert::TryFrom;
-use self::models::{PhemexDataWrapperAccount,PhemexDataWrapperProducts, PhemexProduct, PhemexCurrency};
-use chrono::{DateTime,Utc,TimeZone,SecondsFormat};
+//use std::convert::TryFrom;
+use self::models::{PhemexDataWrapperAccount,PhemexDataWrapperProducts, PhemexProduct, PhemexCurrency,PhemexDataWrapperMD, PhemexMD,TLPhemexMDSnapshot};
+use chrono::{Utc};
 use time::Duration;
 
 use futures::stream::TryStreamExt;
@@ -13,9 +13,6 @@ use mongodb::{Client};
 use mongodb::{bson::doc};
 use mongodb::options::{FindOptions};
 
-use http::header::HeaderValue;
-
-use std::iter::FromIterator;
 use std::collections::HashMap;
 
 
@@ -35,13 +32,6 @@ use sha2::Sha256;
 
 
 use serde::{Deserialize, Serialize};
-//use serde_json::Result;
-use serde_json::json;
-use reqwest::header::HeaderMap;
-//use reqwest::Error;
-
-
-use std::fmt; // Import `fmt`
 
 // Create alias for HMAC-SHA256
 //type HmacSha256 = Hmac<Sha256>;
@@ -51,6 +41,8 @@ use std::fmt; // Import `fmt`
 const API_TOKEN: &str = "89124f02-5e64-436a-bb3c-a5f4d720664d";
 const API_SECRET: &str = "9B1Yl3NZV0DJS7Q3xJ9LRgfJEFwwdhST0Ihh0DBjePo5Y2I1MjNmZS1hOTkzLTQzNjMtODQ3MS03ZDY0N2M1ZTZmOTk";
 
+
+const MD_URL: &str = "https://api.phemex.com/md/ticker/24hr";
 
 const PRODUCTS_URL: &str = "https://api.phemex.com/public/products";
 const ACCOUNT_POSTIONS_URL: &str = "https://vapi.phemex.com/accounts/accountPositions?currency=USD";
@@ -130,6 +122,17 @@ async fn get_currencies() -> Result<Vec<PhemexCurrency>, Box<dyn Error>> {
     Ok(rvec)
 } 
 
+async fn get_market_data<'a>(symbol: &'a str) -> Result<PhemexMD, Box<dyn Error>> {
+
+    let request_url = format!("{}?symbol={}", MD_URL,symbol);
+    let response = reqwest::get(&request_url).await?;
+
+    let payload: PhemexDataWrapperMD = response.json().await?;
+    Ok(payload.result)
+
+} 
+
+
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
@@ -141,6 +144,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::from_yaml(yaml).get_matches();
 //    debug!("{:?}",matches);
 
+    let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    let database = client.database(THE_DATABASE);
+    let tlphsnapcollection = database.collection::<TLPhemexMDSnapshot>(THE_TRADELLAMA_PHEMEX_MD_SNAPSHOT_COLLECTION);
 
     // Calling .unwrap() is safe here because "INPUT" is required (if "INPUT" wasn't
     // required we could have used an 'if let' to conditionally get the value)
@@ -158,7 +164,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
 
         "just-perpetuals" => {
-            for (symbol, product) in get_perpetuals().await.unwrap() {
+            for (_symbol, product) in get_perpetuals().await.unwrap() {
                 println!("{}", product);
             }
         },
@@ -183,12 +189,43 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let payload: PhemexDataWrapperAccount = response.json().await?;
             for p in payload.data.positions {
                 println!("{}", p);           
-                debug!("current mark to market is: ");
                 let perps = get_perpetuals().await;
                 let contract_size = perps.unwrap()[&p.symbol].contract_size;
-                let pos = (p.size as f64 * contract_size) * p.mark_price;
-                let upl = ((p.size as f64 * contract_size) * p.mark_price) - ((p.size as f64 * contract_size) * p.avg_entry_price);
-                debug!("{:?} {:?}", pos, upl);
+                let current_md = get_market_data(&p.symbol).await?;
+                let current_market_price = current_md.mark_price as f64 / 10000.00;
+                debug!("current market price is: {}", current_market_price);
+//                let pos = (p.size as f64 * contract_size) * p.mark_price;
+                let pos = (p.size as f64 * contract_size) * current_market_price;
+                let upl = if p.side == "Buy" {
+                    ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
+                } else {
+                    ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
+                };
+
+// inverse?                    ((p.size as f64 / contract_size) / p.avg_entry_price) - ((p.size as f64 * contract_size) / current_market_price)                    
+
+                debug!("{:?} {:?} {:?}      the open interest is {:?}", pos, upl, pos+upl, current_md.open_interest);
+
+                let new_tlphsnap = TLPhemexMDSnapshot {
+                    snapshot_date: Utc::now(),
+                    symbol: p.symbol,
+                    open: current_md.open,
+                    high: current_md.high,
+                    low: current_md.low,
+                    close: current_md.close,
+                    index_price: current_md.index_price,
+                    mark_price: current_md.mark_price,
+                    open_interest: current_md.open_interest
+                };
+
+                println!("{}", new_tlphsnap);
+                let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                
+                let tlphsnhist = new_tlphsnap.get_history(&1000,&tlphsnapcollection).await?;
+                for q in tlphsnhist {
+                    println!("{}", q);
+                }
+                debug!("{:?}", &new_tlphsnap.get_open_interest_delta(&1000, &tlphsnapcollection).await?);
+
             }
 
 
@@ -206,8 +243,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 symbol: "ETHUSD".to_string(),
                 client_order_id: "".to_string(),
                 side: "Sell".to_string(),
-                price_ep: 32270000,
-                quantity: 16.0,
+                price_ep: 32600000,
+                quantity: 5.0,
                 order_type: "Limit".to_string()
             };
 
@@ -254,6 +291,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
         _ => {
+            debug!("{:?}", get_market_data("ETHUSD").await?);
             debug!("Unrecognized input parm.");
         }
 

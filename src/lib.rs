@@ -28,6 +28,7 @@ pub const THE_CRYPTO_RBES_COLLECTION: &str = "rbes";
 pub const THE_CRYPTO_LIQUIDATION_COLLECTION: &str = "cryptoliquidation";
 pub const THE_CRYPTOCLUSTER_COLLECTION: &str = "cryptocluster";
 pub const THE_CRYPTO_CAP_SUITE_COLLECTION: &str = "cryptocapsuite";
+pub const THE_TRADELLAMA_PHEMEX_MD_SNAPSHOT_COLLECTION: &str = "tlphsnap";
 
 
 
@@ -422,6 +423,7 @@ pub fn do_duo_kmeans<'a>(v: &Vec<f64>) -> Vec<i32> {
         records, targets, ..
     } = dataset;
 
+    debug!("records for records warning {:?}", records);
     let mut rvec = Vec::new();
 
     for idx in 0..(v.len() / 2) {
