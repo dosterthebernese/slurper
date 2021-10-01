@@ -693,10 +693,30 @@ pub struct PhemexProduct {
     pub symbol: String,
     #[serde(rename = "type", default)]
     pub product_type: String,
+    #[serde(rename = "displaySymbol", default)]
+    pub display_symbol: String,
+    #[serde(rename = "indexSymbol", default)]
+    pub index_symbol: String,
+    #[serde(rename = "markSymbol", default)]
+    pub mark_symbol: String,
+    #[serde(rename = "fundingRateSymbol", default)]
+    pub funding_rate_symbol: String,
+    #[serde(rename = "fundingRate8hSymbol", default)]
+    pub funding_rate_eight_hour_symbol: String,
+    #[serde(rename = "contractUnderlyingAssets", default)]
+    pub contract_underlying_assets: String,
+    #[serde(rename = "settleCurrency", default)]
+    pub settle_currency: String,
+    #[serde(rename = "quoteCurrency", default)]
+    pub quote_currency: String,
+    #[serde(rename = "contractSize", default)]
+    pub contract_size: f64,
 }
 impl fmt::Display for PhemexProduct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<20}", self.symbol, self.product_type)
+        write!(f, "{:<10} {:<30} {:<10} {:<10} {:<10} {:<10} {:>10}", self.symbol, self.product_type, 
+            self.display_symbol, self.index_symbol, self.mark_symbol, self.contract_underlying_assets,
+            self.contract_size)
     }
 }
 
@@ -707,10 +727,16 @@ pub struct PhemexCurrency {
     pub currency: String,
     #[serde(rename = "name", default)]
     pub name: String,
+    #[serde(rename = "valueScale", default)]
+    pub value_scale: i64,
+    #[serde(rename = "minValueEv", default)]
+    pub min_value_ev: i64,
+    #[serde(rename = "maxValueEv", default)]
+    pub max_value_ev: i64,
 }
 impl fmt::Display for PhemexCurrency {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<20}", self.currency, self.name)
+        write!(f, "{:<10} {:<20} {:>10} {:>10} {:>10}", self.currency, self.name, self.value_scale, self.min_value_ev, self.max_value_ev)
     }
 }
 
@@ -741,76 +767,91 @@ pub struct PhemexDataWrapperProducts {
 #[derive(Deserialize, Debug)]
 pub struct PhemexPosition {
     #[serde(rename = "accountId", default)]
-    account_id: i32,
+    pub account_id: i32,
     #[serde(rename = "symbol", default)]
-    symbol: String,
+    pub symbol: String,
     #[serde(rename = "currency", default)]
-    currency: String,
+    pub currency: String,
     #[serde(rename = "side", default)]
-    side: String,
+    pub side: String,
     #[serde(rename = "positionStatus", default)]
-    position_status: String,
+    pub position_status: String,
     #[serde(rename = "crossMargin", default)]
-    cross_margin: bool,
+    pub cross_margin: bool,
     #[serde(rename = "leverageEr", default)]
-    leverage_er: i64,
+    pub leverage_er: i64,
     #[serde(rename = "initMarginReqEr", default)]
-    init_margin_req_er: i64,
+    pub init_margin_req_er: i64,
+    #[serde(rename = "initMarginReq", default)]
+    pub init_margin_req: f64,
     #[serde(rename = "maintMarginReqEr", default)]
-    maint_margin_req_er: i64,
+    pub maint_margin_req_er: i64,
+    #[serde(rename = "maintMarginReq", default)]
+    pub maint_margin_req: f64,
     #[serde(rename = "riskLimitEv", default)]
-    risk_limit_ev: i64,
+    pub risk_limit_ev: i64,
     #[serde(rename = "size", default)]
-    size: i64,
+    pub size: i64,
     #[serde(rename = "valueEv", default)]
-    value_ev: i64,
+    pub value_ev: i64,
     #[serde(rename = "avgEntryPriceEp", default)]
-    avg_entry_price_ep: i64,
+    pub avg_entry_price_ep: i64,
+    #[serde(rename = "avgEntryPrice", default)]
+    pub avg_entry_price: f64,
     #[serde(rename = "posCostEv", default)]
-    pos_cost_ev: i64,
+    pub pos_cost_ev: i64,
     #[serde(rename = "assignedPosBalanceEv", default)]
-    assigned_pos_balance_ev: i64,
+    pub assigned_pos_balance_ev: i64,
     #[serde(rename = "bankruptCommEv", default)]
-    bankrupt_comm_ev: i64,
+    pub bankrupt_comm_ev: i64,
     #[serde(rename = "bankruptPriceEp", default)]
-    bankrupt_price_ep: i64,
+    pub bankrupt_price_ep: i64,
     #[serde(rename = "positionMarginEv", default)]
-    position_margin_ev: i64,
+    pub position_margin_ev: i64,
     #[serde(rename = "liquidationPriceEp", default)]
-    liquidation_price_ep: i64,
+    pub liquidation_price_ep: i64,
     #[serde(rename = "deleveragePercentileEr", default)]
-    deleverage_percentile_er: i64,
+    pub deleverage_percentile_er: i64,
     #[serde(rename = "buyValueToCostEr", default)]
-    buy_value_to_cost_er: i64,
+    pub buy_value_to_cost_er: i64,
     #[serde(rename = "sellValueToCostEr", default)]
-    sell_value_to_cost_er: i64,
+    pub sell_value_to_cost_er: i64,
     #[serde(rename = "markPriceEp", default)]
-    mark_price_ep: i64,
+    pub mark_price_ep: i64,
+    #[serde(rename = "markPrice", default)]
+    pub mark_price: f64,
     #[serde(rename = "markValueEv", default)]
-    mark_value_ev: i64,
+    pub mark_value_ev: i64,
     #[serde(rename = "unRealisedPosLossEv", default)]
-    unrealised_pos_loss_ev: i64,
+    pub unrealised_pos_loss_ev: i64,
     #[serde(rename = "estimatedOrdLossEv", default)]
-    estimated_ord_loss_ev: i64,
+    pub estimated_ord_loss_ev: i64,
     #[serde(rename = "usedBalanceEv", default)]
-    used_balance_ev: i64,
+    pub used_balance_ev: i64,
     #[serde(rename = "takeProfitEp", default)]
-    take_profit_ep: i64,
+    pub take_profit_ep: i64,
     #[serde(rename = "stopLossEp", default)]
-    stop_loss_ep: i64,
+    pub stop_loss_ep: i64,
     #[serde(rename = "cumClosedPnlEv", default)]
-    cum_closed_pnl_ev: i64,
+    pub cum_closed_pnl_ev: i64,
     #[serde(rename = "cumFundingFeeEv", default)]
-    cum_funding_fee_ev: i64,
+    pub cum_funding_fee_ev: i64,
     #[serde(rename = "cumTransactFeeEv", default)]
-    cum_transact_fee_ev: i64,
+    pub cum_transact_fee_ev: i64,
     #[serde(rename = "realisedPnlEv", default)]
-    realised_pnl_ev: i64,
+    pub realised_pnl_ev: i64,
     #[serde(rename = "unRealisedPnlEv", default)]
-    unrealised_pnl_ev: i64,
+    pub unrealised_pnl_ev: i64,
     #[serde(rename = "cumRealisedPnlEv", default)]
-    cum_realised_pnl_ev: i64,
+    pub cum_realised_pnl_ev: i64,
 }
+
+impl fmt::Display for PhemexPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4}", self.symbol, self.side, self.size, self.mark_price_ep, self.mark_price)
+    }
+}
+
 
 
 #[derive(Deserialize, Debug)]
