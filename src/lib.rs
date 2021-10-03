@@ -404,6 +404,36 @@ pub fn std_deviation(data: &[f64]) -> Option<f64> {
 }
 
 
+pub fn delta_walk_integers<'a>(v: &Vec<i64>) -> Vec<f64> {
+    let mut rvec = Vec::new();
+    for (idx, i) in v.iter().enumerate() {
+        if idx == 0 {
+            rvec.push(1.0);
+        } else {
+            let prior_value = v[idx-1];
+            if prior_value != 0 {
+                rvec.push( ((*i as f64 - prior_value as f64) / prior_value as f64) * 100. );            
+            } else {
+                rvec.push(*i as f64);
+            }
+        }
+    }
+    rvec
+}
+
+pub fn interval_walk_timestamps<'a>(v: &Vec<DateTime<Utc>>) -> Vec<i64> {
+    let mut rvec = Vec::new();
+    for (idx, i) in v.iter().enumerate() {
+        if idx == 0 {
+            rvec.push(0);
+        } else {
+            let prior_value = v[idx-1];
+            rvec.push(i.signed_duration_since(prior_value).num_seconds());            
+        }
+    }
+    rvec
+}
+
 
 pub fn do_duo_kmeans<'a>(v: &Vec<f64>) -> Vec<i32> {
 

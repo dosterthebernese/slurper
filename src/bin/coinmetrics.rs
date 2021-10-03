@@ -24,8 +24,9 @@ use serde::Deserialize;
 
 use std::fmt; // Import `fmt`
 
-
-
+const MARKETS_URL: &str = "https://community-api.coinmetrics.io/v4/catalog/markets";
+const TS_URL: &str = "https://community-api.coinmetrics.io/v4/timeseries/market-trades";
+const TS_LIQ_URL: &str = "https://community-api.coinmetrics.io/v4/timeseries/market-liquidations";
 
 #[derive(Deserialize, Debug)]
 struct CMDataMetric {
@@ -93,8 +94,6 @@ struct CMDataWrapperMarkets {
 
 #[derive(Deserialize, Debug)]
 struct CMDataTSMarketTrades {
- //   #[serde(with = "chrono_datetime_as_bson_datetime")]
-//    time: DateTime<Utc>,
     time: String,
     market: String,
     coin_metrics_id: String,
@@ -103,6 +102,35 @@ struct CMDataTSMarketTrades {
     database_time: String,
     side: Option<String>
 }
+
+impl CMDataTSMarketTrades {
+
+
+    fn make_crypto_trade(self: &Self) -> CryptoTrade {
+
+        let this_eth_market = CryptoMarket {
+            market: self.market.clone()
+        };
+
+        let trade_date = DateTime::parse_from_rfc3339(&self.time).unwrap();
+        
+        CryptoTrade {
+            trade_date: trade_date.with_timezone(&Utc),
+            coin_metrics_id: self.coin_metrics_id.clone(),
+            price: self.price.parse::<f64>().unwrap(),
+            quantity: self.amount.parse::<f64>().unwrap(),
+            market: self.market.clone(),
+            tx_type: self.side.clone().unwrap_or("NOT PROVIDED".to_string()),
+            trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+            trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+            trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
+        }
+
+    }
+
+}
+
+
 
 #[derive(Deserialize, Debug)]
 struct CMDataWrapperTSMarketData {
@@ -113,6 +141,13 @@ struct CMDataWrapperTSMarketData {
     #[serde(rename = "next_page_url", default)]
     next_page_url: String,
 }
+
+
+
+
+
+
+
 
 
 
@@ -128,6 +163,40 @@ struct CMDataTSMarketLiquidations {
     database_time: String,
     side: Option<String>
 }
+
+
+impl CMDataTSMarketLiquidations {
+
+    fn make_crypto_liquidation(self: &Self) -> CryptoLiquidation {
+
+        let this_eth_market = CryptoMarket {
+            market: self.market.clone()
+        };
+
+        let trade_date = DateTime::parse_from_rfc3339(&self.time).unwrap();
+        
+        CryptoLiquidation {
+            trade_date: trade_date.with_timezone(&Utc),
+            coin_metrics_id: self.coin_metrics_id.clone(),
+            price: self.price.parse::<f64>().unwrap(),
+            quantity: self.amount.parse::<f64>().unwrap(),
+            market: self.market.clone(),
+            tx_type: self.side.clone().unwrap_or("NOT PROVIDED".to_string()),
+            cm_type: self.cm_type.clone().unwrap_or("NOT PROVIDED".to_string()),
+            trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
+            trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
+            trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
+        }
+
+    }
+
+}
+
+
+
+
+
+
 
 #[derive(Deserialize, Debug)]
 struct CMDataWrapperTSMarketLiquidations {
@@ -204,6 +273,30 @@ async fn get_ts_asset_metrics_cap_suite_eth<'a>(whole_url: &'a str) -> Result<CM
 }
 
 
+async fn get_all_coinmetrics_markets() -> Result<Vec<CryptoMarket>, Box<dyn Error>> {
+
+    let mut rvec = Vec::new();
+
+    let request_url = format!("{}", MARKETS_URL);
+    let response = reqwest::get(&request_url).await?;
+    let payload: CMDataWrapperMarkets = response.json().await?;
+
+    for cmditem in payload.cmds {
+        let this_market = CryptoMarket {
+            market: cmditem.market
+        };
+        rvec.push(this_market.clone());
+    }
+
+    Ok(rvec)
+
+}
+
+
+
+
+
+
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
@@ -262,13 +355,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
         "markets" => {
-            let request_url = format!("https://community-api.coinmetrics.io/v4/catalog/markets");
-            let response = reqwest::get(&request_url).await?;
-            let payload: CMDataWrapperMarkets = response.json().await?;
-            for cmditem in payload.cmds {
-                //use print not debug so you can grep
-                println!("{:?} {:?}", cmditem.market, cmditem.symbol);
+
+            let all_markets = get_all_coinmetrics_markets().await?;
+            for market in all_markets {
+                println!("{}", market);
             }
+
         },
 
 
@@ -360,71 +452,21 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
         "ts-append-ETH-USD-liquidations" => {
-            let request_url = format!("https://community-api.coinmetrics.io/v4/catalog/markets");
-            let response = reqwest::get(&request_url).await?;
-            let payload: CMDataWrapperMarkets = response.json().await?;
-            for cmditem in payload.cmds {
-                let is_eth_futures_market = if cmditem.market.contains("ETH-USD") { // lowercase i think is spot, upper is FUTURE
-                    true
-                } else {
-                    false
-                };
 
-                if is_eth_futures_market {
-
-                    let this_eth_market = CryptoMarket {
-                        market: cmditem.market.clone()
-                    };
-
-                    let big_bang = this_eth_market.get_last_updated_liquidation(&lcollection).await?;
-                    info!("I am going to ignore anything prior to {:?} for {:?}", &big_bang, &cmditem.market);
+            let all_markets = get_all_coinmetrics_markets().await?;
+            for market in all_markets {
+                if market.is_eth_futures_market() {
+                    println!("{}", market);
+                    let big_bang = market.get_last_updated_liquidation(&lcollection).await?;
                     let gtedate = big_bang.to_rfc3339_opts(SecondsFormat::Secs, true);
-                    debug!("Our start time for the query is: {:?} for market {:?}", gtedate, &cmditem.market);
-                    let mut ts_url1 = format!("https://community-api.coinmetrics.io/v4/timeseries/market-liquidations?start_time={}&paging_from=start&markets={}&page_size=1000", gtedate,this_eth_market.market);
-                    let payload_ts = get_ts_market_liquidations(&ts_url1).await?;
-
-                    for cmditem in payload_ts.cmds {
-                        let trade_date = DateTime::parse_from_rfc3339(&cmditem.time).unwrap();
-                        if trade_date > big_bang {
-                            let new_crypto_liq = CryptoLiquidation {
-                                trade_date: trade_date.with_timezone(&Utc),
-                                coin_metrics_id: cmditem.coin_metrics_id,
-                                price: cmditem.price.parse::<f64>().unwrap(),
-                                quantity: cmditem.amount.parse::<f64>().unwrap(),
-                                market: cmditem.market,
-                                tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string()),                        
-                                trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
-                                trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
-                                trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
-                            };
-                            println!("{}", new_crypto_liq);
-                            let _result = lcollection.insert_one(new_crypto_liq, None).await?;                                    
-                        }                                
-                    }
-
-
-                    debug!("npt {:?}", payload_ts.next_page_token);
-                    debug!("npu {:?}", payload_ts.next_page_url);
-                    ts_url1 = payload_ts.next_page_url;
+                    let mut ts_url1 = format!("{}?start_time={}&paging_from=start&markets={}&page_size=1000", TS_LIQ_URL,gtedate,market.market);
 
                     while ts_url1 != "" {
                         let inner_payload_ts = get_ts_market_liquidations(&ts_url1).await?;
                         for cmditem in inner_payload_ts.cmds {
                             let trade_date = DateTime::parse_from_rfc3339(&cmditem.time).unwrap();
                             if trade_date > big_bang {
-                                let new_crypto_liq = CryptoLiquidation {
-                                    trade_date: trade_date.with_timezone(&Utc),
-                                    coin_metrics_id: cmditem.coin_metrics_id,
-                                    price: cmditem.price.parse::<f64>().unwrap(),
-                                    quantity: cmditem.amount.parse::<f64>().unwrap(),
-                                    market: cmditem.market,
-                                    tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                    cm_type: cmditem.cm_type.unwrap_or("NOT PROVIDED".to_string()),                        
-                                    trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
-                                    trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
-                                    trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
-                                };
+                                let new_crypto_liq = cmditem.make_crypto_liquidation();
                                 println!("{}", new_crypto_liq);
                                 let _result = lcollection.insert_one(new_crypto_liq, None).await?;                                    
                             }
@@ -441,76 +483,29 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
         "ts-append-eth-usd" => {
-            let request_url = format!("https://community-api.coinmetrics.io/v4/catalog/markets");
-            let response = reqwest::get(&request_url).await?;
-            let payload: CMDataWrapperMarkets = response.json().await?;
-            for cmditem in payload.cmds {
-                let is_eth_market = if cmditem.market.contains("eth-usd") || cmditem.market.contains("ETH-USD") { // lowercase i think is spot, upper is FUTURE
-                    true
-                } else {
-                    false
-                };
 
-                if is_eth_market {
+            let all_markets = get_all_coinmetrics_markets().await?;
 
-                    let this_eth_market = CryptoMarket {
-                        market: cmditem.market.clone()
-                    };
+            for market in all_markets {
 
-                    let big_bang = this_eth_market.get_last_updated_trade(&collection).await?;
-                    info!("I am going to ignore anything prior to {:?} for {:?}", &big_bang, &cmditem.market);
+                if market.is_eth_market() {
+                    println!("{}", market);
+                    let big_bang = market.get_last_updated_trade(&collection).await?;
                     let gtedate = big_bang.to_rfc3339_opts(SecondsFormat::Secs, true);
-                    debug!("Our start time for the query is: {:?} for market {:?}", gtedate, &cmditem.market);
-                    let mut ts_url1 = format!("https://community-api.coinmetrics.io/v4/timeseries/market-trades?start_time={}&paging_from=start&markets={}&page_size=1000", gtedate,this_eth_market.market);
-                    let payload_ts = get_ts_market_trades(&ts_url1).await?;
-
-                    for cmditem in payload_ts.cmds {
-                        let trade_date = DateTime::parse_from_rfc3339(&cmditem.time).unwrap();
-                        if trade_date > big_bang {
-                            let new_crypto_trade = CryptoTrade {
-                                trade_date: trade_date.with_timezone(&Utc),
-                                coin_metrics_id: cmditem.coin_metrics_id,
-                                price: cmditem.price.parse::<f64>().unwrap(),
-                                quantity: cmditem.amount.parse::<f64>().unwrap(),
-                                market: cmditem.market,
-                                tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
-                                trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
-                                trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
-                            };
-                            println!("{}", new_crypto_trade);
-                            let _result = collection.insert_one(new_crypto_trade, None).await?;                                    
-                        }                                
-                    }
-
-
-                    debug!("npt {:?}", payload_ts.next_page_token);
-                    debug!("npu {:?}", payload_ts.next_page_url);
-                    ts_url1 = payload_ts.next_page_url;
-
+                    let mut ts_url1 = format!("{}?start_time={}&paging_from=start&markets={}&page_size=1000", TS_URL,gtedate,market.market);
                     while ts_url1 != "" {
-                        let inner_payload_ts = get_ts_market_trades(&ts_url1).await?;
-                        for cmditem in inner_payload_ts.cmds {
+                        let payload_ts = get_ts_market_trades(&ts_url1).await?;
+                        for cmditem in payload_ts.cmds {
                             let trade_date = DateTime::parse_from_rfc3339(&cmditem.time).unwrap();
-                            if trade_date > big_bang {
-                                let new_crypto_trade = CryptoTrade {
-                                    trade_date: trade_date.with_timezone(&Utc),
-                                    coin_metrics_id: cmditem.coin_metrics_id,
-                                    price: cmditem.price.parse::<f64>().unwrap(),
-                                    quantity: cmditem.amount.parse::<f64>().unwrap(),
-                                    market: cmditem.market,
-                                    tx_type: cmditem.side.unwrap_or("NOT PROVIDED".to_string()),
-                                    trade_llama_exchange: this_eth_market.just_exchange().unwrap().to_string(),
-                                    trade_llama_instrument: this_eth_market.drop_exchange().unwrap(),
-                                    trade_llama_instrument_type: this_eth_market.drop_all_but_instrument_type().unwrap().to_string()                                                        
-                                };
+                            if trade_date > big_bang { // this is redundant I think to the above gtedate
+                                let new_crypto_trade = cmditem.make_crypto_trade();
                                 println!("{}", new_crypto_trade);
                                 let _result = collection.insert_one(new_crypto_trade, None).await?;                                    
                             }
                         }
-                        debug!("npt {:?}", inner_payload_ts.next_page_token);
-                        debug!("npu {:?}", inner_payload_ts.next_page_url);
-                        ts_url1 = inner_payload_ts.next_page_url;
+                        debug!("npt {:?}", payload_ts.next_page_token);
+                        debug!("npu {:?}", payload_ts.next_page_url);
+                        ts_url1 = payload_ts.next_page_url;
                     }
 
                 }

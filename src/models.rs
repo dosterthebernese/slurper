@@ -1,6 +1,8 @@
 // this use statement gets you access to the lib file - you use crate instead of the package name, who the fuck knows why (see any bin rs)
 use crate::*;
 
+use log::{info};
+
 use serde::{Serialize,Deserialize};
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use chrono::{DateTime,Utc,TimeZone,SecondsFormat};
@@ -117,6 +119,25 @@ pub struct CryptoMarket {
 impl CryptoMarket {
 
 
+    pub fn is_eth_market(self: &Self) -> bool {
+        if self.market.contains("eth-usd") || self.market.contains("ETH-USD") {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_eth_futures_market(self: &Self) -> bool {
+
+        if self.market.contains("ETH-USD") { // lowercase i think is spot, upper is FUTURE
+            true
+        } else {
+            false
+        }
+
+    }
+
+
     pub fn drop_all_but_instrument_type(self: &Self) -> Result<&str, ParseError> {
         let market_array = self.market.split('-').collect::<Vec<&str>>();
         Ok(market_array[market_array.len()-1])
@@ -165,6 +186,14 @@ impl CryptoMarket {
     }
 
 }
+
+impl fmt::Display for CryptoMarket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10}", self.market)
+    }
+}
+
+
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -450,9 +479,9 @@ impl CryptoTrade {
 
 impl fmt::Display for CryptoTrade {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<9} {:<9} {:>6.2} {:>9.4} {:<30} {:<5} {:<30} {:<30} {:<30}", 
-            &self.coin_metrics_id, &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type, 
-            &self.trade_llama_exchange, &self.trade_llama_instrument, &self.trade_llama_instrument_type)
+        write!(f, "{:<10} {:<35} {:>6.2} {:>9.4} {:<30} {:<5} {:<20} {:<10} {:<10}", 
+            self.coin_metrics_id, self.trade_date, self.price, self.quantity, self.market, self.tx_type, 
+            self.trade_llama_exchange, self.trade_llama_instrument, self.trade_llama_instrument_type)
     }
 }
 
@@ -877,6 +906,36 @@ pub struct PhemexDataWrapperAccount {
 }
 
 
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalysisArtifact {
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub ltdate: DateTime<Utc>,
+    #[serde(rename = "symbol", default)]
+    pub symbol: Option<String>,
+}
+
+impl AnalysisArtifact {
+
+    pub async fn get_history(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<Vec<TLPhemexMDSnapshot>, Error> {
+
+        let gtedate = self.ltdate - Duration::milliseconds(*lb);
+
+        let mut crts: Vec<TLPhemexMDSnapshot> = Vec::new();
+        let filter = doc! {"snapshot_date": {"$gte": gtedate}, "symbol": self.symbol.as_ref()};
+        let find_options = FindOptions::builder().sort(doc! { "snapshot_date":1}).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+        while let Some(crt) = cursor.try_next().await? {
+            crts.push(crt.clone());                
+        }
+        Ok(crts)
+    }
+
+}
+
+
+
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TLPhemexMDSnapshot {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
@@ -901,13 +960,14 @@ pub struct TLPhemexMDSnapshot {
 
 impl TLPhemexMDSnapshot {
 
-    pub async fn get_history(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<Vec<TLPhemexMDSnapshot>, Error> {
+    pub async fn get_liquidations(self: &Self, lb: &i64, collection: &Collection<CryptoLiquidation>) -> Result<Vec<CryptoLiquidation>, Error> {
 
-        let ltdate = self.snapshot_date - Duration::milliseconds(*lb);
+        info!("This call to liquidations is hard wirded to eth usd assets, from CM");
+        let gtedate = self.snapshot_date - Duration::milliseconds(*lb);
 
-        let mut crts: Vec<TLPhemexMDSnapshot> = Vec::new();
-        let filter = doc! {"snapshot_date": {"$lt": ltdate}, "symbol": &self.symbol};
-        let find_options = FindOptions::builder().sort(doc! { "snapshot_date":1}).build();
+        let mut crts: Vec<CryptoLiquidation> = Vec::new();
+        let filter = doc! {"trade_date": {"$gte": gtedate}};
+        let find_options = FindOptions::builder().sort(doc! { "trade_date":1}).build();
         let mut cursor = collection.find(filter, find_options).await?;
         while let Some(crt) = cursor.try_next().await? {
             crts.push(crt.clone());                
@@ -915,9 +975,28 @@ impl TLPhemexMDSnapshot {
         Ok(crts)
     }
 
+
+    pub async fn get_history(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<Vec<TLPhemexMDSnapshot>, Error> {
+
+
+        let ltdate = self.snapshot_date;
+        let aa = AnalysisArtifact {
+            ltdate: ltdate,
+            symbol: Some("ETHUSD".to_string())
+        };
+        Ok(aa.get_history(lb, collection).await?)
+
+    }
+
     pub async fn get_open_interest_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
         let h = self.get_history(&lb, &collection).await.unwrap();
         let d = (h[h.len()-1].open_interest as f64 - h[0].open_interest as f64) / h[0].open_interest as f64;
+        Ok(d*100.00)
+    }
+
+    pub async fn get_mark_price_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
+        let h = self.get_history(&lb, &collection).await.unwrap();
+        let d = (h[h.len()-1].mark_price as f64 - h[0].mark_price as f64) / h[0].mark_price as f64;
         Ok(d*100.00)
     }
 
@@ -928,7 +1007,7 @@ impl TLPhemexMDSnapshot {
 
 impl fmt::Display for TLPhemexMDSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10}", self.snapshot_date, self.symbol, self.open_interest)
+        write!(f, "{:<10} {:<10} {:<10} {:<10}", self.snapshot_date, self.symbol, self.mark_price, self.open_interest)
     }
 }
 
