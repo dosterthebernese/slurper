@@ -221,6 +221,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
             }
 
+            debug!("open interest delta {:?}", &aa.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+            debug!("mark price delta {:?}", &aa.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+
+
         },
 
         "account-positions" => {
@@ -355,7 +359,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             // }
 
 
-        }
+        },
+
+        "hack" => {
+
+            let foo = vec![2f64 * (10.-2.)];
+            debug!("{:?}", foo);
+
+        },
 
 
 

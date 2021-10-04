@@ -931,6 +931,20 @@ impl AnalysisArtifact {
         Ok(crts)
     }
 
+    pub async fn get_open_interest_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
+        let h = self.get_history(&lb, &collection).await.unwrap();
+        let d = (h[h.len()-1].open_interest as f64 - h[0].open_interest as f64) / h[0].open_interest as f64;
+        Ok(d*100.00)
+    }
+
+    pub async fn get_mark_price_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
+        let h = self.get_history(&lb, &collection).await.unwrap();
+        let d = (h[h.len()-1].mark_price as f64 - h[0].mark_price as f64) / h[0].mark_price as f64;
+        Ok(d*100.00)
+    }
+
+
+
 }
 
 
@@ -989,15 +1003,27 @@ impl TLPhemexMDSnapshot {
     }
 
     pub async fn get_open_interest_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
-        let h = self.get_history(&lb, &collection).await.unwrap();
-        let d = (h[h.len()-1].open_interest as f64 - h[0].open_interest as f64) / h[0].open_interest as f64;
-        Ok(d*100.00)
+
+        let ltdate = self.snapshot_date;
+        let aa = AnalysisArtifact {
+            ltdate: ltdate,
+            symbol: Some("ETHUSD".to_string())
+        };
+
+        let d = aa.get_open_interest_delta(lb, collection).await.unwrap();
+        Ok(d)
+
     }
 
     pub async fn get_mark_price_delta(self: &Self, lb: &i64, collection: &Collection<TLPhemexMDSnapshot>) -> Result<f64, Error> {
-        let h = self.get_history(&lb, &collection).await.unwrap();
-        let d = (h[h.len()-1].mark_price as f64 - h[0].mark_price as f64) / h[0].mark_price as f64;
-        Ok(d*100.00)
+        let ltdate = self.snapshot_date;
+        let aa = AnalysisArtifact {
+            ltdate: ltdate,
+            symbol: Some("ETHUSD".to_string())
+        };
+
+        let d = aa.get_mark_price_delta(lb, collection).await.unwrap();
+        Ok(d)
     }
 
 
