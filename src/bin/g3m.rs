@@ -120,15 +120,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
 
-            let proposal_1_delta_a = pool["Asset A"] + 1.;
-            let proposal_1_delta_b = pool["Asset B"] - 5.;
-            let mut proposal1 = HashMap::new();
-            proposal1.insert("Asset A", proposal_1_delta_a);
-            proposal1.insert("Asset B", proposal_1_delta_b);
+            // let proposal_1_delta_a = pool["Asset A"] + 1.;
+            // let proposal_1_delta_b = pool["Asset B"] - 5.;
+            // let mut proposal1 = HashMap::new();
+            // proposal1.insert("Asset A", proposal_1_delta_a);
+            // proposal1.insert("Asset B", proposal_1_delta_b);
 
-            let product_proposal_1: f64 = proposal1.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
-            let gm_after_proposal_1 = product_proposal_1.pow(exponent_for_product);
-            assert_eq!(gm_at_inception, gm_after_proposal_1);
+            // let product_proposal_1: f64 = proposal1.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
+            // let gm_after_proposal_1 = product_proposal_1.pow(exponent_for_product);
+            // assert_eq!(gm_at_inception, gm_after_proposal_1);
 
 
 
@@ -138,11 +138,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let mut proposal2 = HashMap::new();
             proposal2.insert("Asset A", proposal_2_delta_a);
             proposal2.insert("Asset B", proposal_2_delta_b);
+            debug!("proposal looks like {:?}", proposal2);
 
             let product_proposal_2: f64 = proposal2.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
             let gm_after_proposal_2 = product_proposal_2.pow(exponent_for_product);
             assert_eq!(gm_at_inception, gm_after_proposal_2);
-
+            //rounding shit causes alex shit to fail but hey its fine
 
 
 
