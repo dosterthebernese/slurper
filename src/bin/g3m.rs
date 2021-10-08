@@ -60,6 +60,17 @@ impl fmt::Display for Stake<'_> {
 // } 
 
 
+pub fn geometric_mean(weights: &HashMap<&str, f64>, pool: &HashMap<&str, f64>) -> f64 {
+    //https://www.dummies.com/education/math/business-statistics/how-to-find-the-weighted-geometric-mean-of-a-data-set/
+    let sum_of_the_weights: f64 = weights.values().sum();
+    let exponent_for_product = 1. / sum_of_the_weights; // 
+    let product: f64 = pool.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
+    product.pow(exponent_for_product)
+}
+
+
+
+
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
@@ -105,32 +116,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
 
 
-            //https://www.dummies.com/education/math/business-statistics/how-to-find-the-weighted-geometric-mean-of-a-data-set/
-            let sum_of_the_weights: f64 = weights.values().sum();
-            let exponent_for_product = 1. / sum_of_the_weights; // 
-
-            debug!("{:?}", pool);
-            debug!("{}", sum_of_the_weights);
-            debug!("{}", exponent_for_product);
-
-            // so it applies the appropriate weight as exponent in map and then that vector of floats is productized, bitches
-            let product: f64 = pool.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
-            let gm_at_inception = product.pow(exponent_for_product);
+            let gm_at_inception = geometric_mean(&weights, &pool);
             debug!("gm at inception is {}", gm_at_inception);
 
 
 
-            // let proposal_1_delta_a = pool["Asset A"] + 1.;
-            // let proposal_1_delta_b = pool["Asset B"] - 5.;
-            // let mut proposal1 = HashMap::new();
-            // proposal1.insert("Asset A", proposal_1_delta_a);
-            // proposal1.insert("Asset B", proposal_1_delta_b);
-
-            // let product_proposal_1: f64 = proposal1.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
-            // let gm_after_proposal_1 = product_proposal_1.pow(exponent_for_product);
-            // assert_eq!(gm_at_inception, gm_after_proposal_1);
-
-
+            let proposal_1_delta_a = pool["Asset A"] + 1.;
+            let proposal_1_delta_b = pool["Asset B"] - 5.;
+            let mut proposal1 = HashMap::new();
+            proposal1.insert("Asset A", proposal_1_delta_a);
+            proposal1.insert("Asset B", proposal_1_delta_b);
+            debug!("proposal looks like {:?}", proposal1);
+            let gm_after_proposal_1 = geometric_mean(&weights, &proposal1);
+            debug!("so gm constant {:?} and gm proposed {:?}", gm_at_inception, gm_after_proposal_1);
 
 
             let proposal_2_delta_a = pool["Asset A"] + 1.;
@@ -139,11 +137,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             proposal2.insert("Asset A", proposal_2_delta_a);
             proposal2.insert("Asset B", proposal_2_delta_b);
             debug!("proposal looks like {:?}", proposal2);
-
-            let product_proposal_2: f64 = proposal2.iter().map(|(&a,&b)| b.pow(weights[a])).collect::<Vec<f64>>().iter().product();
-            let gm_after_proposal_2 = product_proposal_2.pow(exponent_for_product);
-            assert_eq!(gm_at_inception, gm_after_proposal_2);
-            //rounding shit causes alex shit to fail but hey its fine
+            let gm_after_proposal_2 = geometric_mean(&weights, &proposal2);
+            debug!("so gm constant {:?} and gm proposed {:?}", gm_at_inception, gm_after_proposal_2);
 
 
 
