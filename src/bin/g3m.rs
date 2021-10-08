@@ -115,6 +115,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 pool.entry(stake.name).and_modify(|e| { *e += stake.quantity}).or_insert(stake.quantity);                                
             }
 
+            debug!("reserves at inception");
+            for (asset, quantity) in &pool {
+                debug!("{} {:?} and each LP gets {:?}", asset, quantity, quantity * 0.5);
+            }
 
             let gm_at_inception = geometric_mean(&weights, &pool);
             debug!("gm at inception is {}", gm_at_inception);
@@ -139,6 +143,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             debug!("proposal looks like {:?}", proposal2);
             let gm_after_proposal_2 = geometric_mean(&weights, &proposal2);
             debug!("so gm constant {:?} and gm proposed {:?}", gm_at_inception, gm_after_proposal_2);
+
+            debug!("reserves after proposal 2 (which with rounding would be accepted)");
+            for (asset, quantity) in &proposal2 {
+                debug!("{} {:?} and each LP gets {:?}", asset, quantity, quantity * 0.5);
+            }
 
 
 
