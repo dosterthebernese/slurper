@@ -22,6 +22,7 @@ use rand_isaac::Isaac64Rng;
 
 pub const LOCAL_MONGO: &str = "mongodb://localhost:27017";
 pub const THE_DATABASE: &str = "tradellama";
+pub const THE_COINMETRICS_COLLECTION: &str = "coinmetrics";
 pub const THE_CRYPTO_COLLECTION: &str = "crypto";
 pub const THE_CRYPTO_RBMS_COLLECTION: &str = "rbms";
 pub const THE_CRYPTO_RBES_COLLECTION: &str = "rbes";

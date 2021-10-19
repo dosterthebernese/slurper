@@ -144,6 +144,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let gm_after_proposal_2 = geometric_mean(&weights, &proposal2);
             debug!("so gm constant {:?} and gm proposed {:?}", gm_at_inception, gm_after_proposal_2);
 
+            debug!("and the marginal price of asset b, given this transaction would be acceptable, is {:?}", pool["Asset B"] - proposal_2_delta_b);
+
             debug!("reserves after proposal 2 (which with rounding would be accepted)");
             for (asset, quantity) in &proposal2 {
                 debug!("{} {:?} and each LP gets {:?}", asset, quantity, quantity * 0.5);
