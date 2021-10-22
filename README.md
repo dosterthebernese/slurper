@@ -1,8 +1,12 @@
 ### Requirements local
 ## mongo (default install) - used to track runs against coinmetrics, but will probably use for other things as well
 ## Druid - not that when you run druid in console, it launches zookeeper (if you ran Kafka by itself, Kafka also has zookeeper, and directs you to launch it)
+## https://druid.apache.org/docs/latest/tutorials/index.html
 ## Kafka - see above, don't run the zookeeper launch
+## https://kafka.apache.org/quickstart
 ## Superset 
+## note that I cloned from git, did the install, and now, boot reboot, it always seems to be running
+## https://superset.apache.org/docs/installation/installing-superset-using-docker-compose
 
 ### components
 ## start with Phemex - neil's account secret is hardcoded, so, any other users, we need to change that, and I need your IP (external to the world) so I can login and create an additional secret
