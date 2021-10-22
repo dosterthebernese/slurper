@@ -524,6 +524,18 @@ pub struct PhemexDataWrapperMD {
 
 
 
+pub struct TLDYDXMarket<'a> {
+    pub market: &'a str,
+    pub status: &'a str,
+    pub base_asset: &'a str,
+    pub quote_asset: &'a str,
+    pub step_size: f64,
+}
+impl fmt::Display for TLDYDXMarket<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size)
+    }
+}
 
 
 
@@ -533,11 +545,28 @@ pub struct DYDXMarket {
     pub status: String,
     #[serde(rename(deserialize = "baseAsset"))]
     pub base_asset: String,
+    #[serde(rename(deserialize = "quoteAsset"))]
+    pub quote_asset: String,
+    #[serde(rename(deserialize = "stepSize"))]
+    pub step_size: String,
+}
+
+impl DYDXMarket {
+    pub fn get_tl_version(self: &Self) -> Result<TLDYDXMarket, NormalError> {
+        Ok(TLDYDXMarket {
+            market: &self.market,
+            status: &self.status,
+            base_asset: &self.base_asset,
+            quote_asset: &self.quote_asset,
+            step_size: self.step_size.parse::<f64>().unwrap(),
+        })
+    }
+
 }
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10}", self.market, self.status, self.base_asset)
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size)
     }
 }
 

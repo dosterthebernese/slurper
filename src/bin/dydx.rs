@@ -148,7 +148,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "all-markets" => {
             for item in get_markets().await.unwrap() {
-                println!("{}", item);
+                println!("{}", item.get_tl_version().unwrap());
             }
         },
         _ => {
