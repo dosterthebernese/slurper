@@ -530,10 +530,14 @@ pub struct TLDYDXMarket<'a> {
     pub base_asset: &'a str,
     pub quote_asset: &'a str,
     pub step_size: f64,
+    pub tick_size: f64,
+    pub index_price: f64,
+    pub oracle_price: f64
 }
+
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size)
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price)
     }
 }
 
@@ -549,6 +553,12 @@ pub struct DYDXMarket {
     pub quote_asset: String,
     #[serde(rename(deserialize = "stepSize"))]
     pub step_size: String,
+    #[serde(rename(deserialize = "tickSize"))]
+    pub tick_size: String,
+    #[serde(rename(deserialize = "indexPrice"))]
+    pub index_price: String,
+    #[serde(rename(deserialize = "oraclePrice"))]
+    pub oracle_price: String
 }
 
 impl DYDXMarket {
@@ -559,6 +569,9 @@ impl DYDXMarket {
             base_asset: &self.base_asset,
             quote_asset: &self.quote_asset,
             step_size: self.step_size.parse::<f64>().unwrap(),
+            tick_size: self.tick_size.parse::<f64>().unwrap(),
+            index_price: self.index_price.parse::<f64>().unwrap(),
+            oracle_price: self.oracle_price.parse::<f64>().unwrap()
         })
     }
 
@@ -566,7 +579,7 @@ impl DYDXMarket {
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size)
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price)
     }
 }
 
