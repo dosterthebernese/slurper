@@ -524,6 +524,7 @@ pub struct PhemexDataWrapperMD {
 
 
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TLDYDXMarket<'a> {
     pub market: &'a str,
     pub status: &'a str,
@@ -532,18 +533,14 @@ pub struct TLDYDXMarket<'a> {
     pub step_size: f64,
     pub tick_size: f64,
     pub index_price: f64,
-    pub oracle_price: f64
-}
-impl TLDYDXMarket<'_> {
-    pub fn get_index_oracle_spread(self: &Self) -> f64 {
-        (self.index_price - self.oracle_price) / self.oracle_price
-    }
+    pub oracle_price: f64,
+    pub tl_derived_index_oracle_spread: f64
 }
 
 
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price)
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread)
     }
 }
 
@@ -569,6 +566,11 @@ pub struct DYDXMarket {
 
 impl DYDXMarket {
     pub fn get_tl_version(self: &Self) -> Result<TLDYDXMarket, NormalError> {
+
+        let index_price = self.index_price.parse::<f64>().unwrap();
+        let oracle_price = self.oracle_price.parse::<f64>().unwrap();
+        let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
+
         Ok(TLDYDXMarket {
             market: &self.market,
             status: &self.status,
@@ -576,8 +578,9 @@ impl DYDXMarket {
             quote_asset: &self.quote_asset,
             step_size: self.step_size.parse::<f64>().unwrap(),
             tick_size: self.tick_size.parse::<f64>().unwrap(),
-            index_price: self.index_price.parse::<f64>().unwrap(),
-            oracle_price: self.oracle_price.parse::<f64>().unwrap()
+            index_price: index_price,
+            oracle_price: oracle_price,
+            tl_derived_index_oracle_spread: tl_derived_index_oracle_spread
         })
     }
 

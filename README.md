@@ -20,9 +20,11 @@
 ## ./bin/kafka-server-start.sh config/server.properties
 
 ## ./bin/kafka-topics.sh --create --topic coinmetrics-markets --partitions 10 --replication-factor 1 --bootstrap-server localhost:9092
+## ./bin/kafka-topics.sh --create --topic dydx-markets --partitions 10 --replication-factor 1 --bootstrap-server localhost:9092
 ## ./bin/kafka-topics.sh --delete --topic coinmetrics-markets --bootstrap-server localhost:9092
 
 ## ./bin/kafka-console-consumer.sh --topic coinmetrics-markets --from-beginning --bootstrap-server localhost:9092
+## ./bin/kafka-console-consumer.sh --topic dydx-markets --from-beginning --bootstrap-server localhost:9092
 
 
 

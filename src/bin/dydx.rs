@@ -147,10 +147,43 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     match matches.value_of("INPUT").unwrap() {
 
         "all-markets" => {
-            for item in get_markets().await.unwrap() {
-                let tlm = item.get_tl_version().unwrap();
-                println!("{} {}", tlm, tlm.get_index_oracle_spread());
+
+            let broker = "localhost:9092";
+            let topic = "dydx-markets";
+
+            let mut producer = Producer::from_hosts(vec![broker.to_owned()])
+                .with_ack_timeout(Duration::from_secs(1))
+                .with_required_acks(RequiredAcks::One)
+                .create()?;
+
+
+            info!("this process should be daemonized");
+            let mut interval = TokioTime::interval(TokioDuration::from_millis(1000));
+
+            let mut tmpcnt = 0;
+            loop {
+                if tmpcnt == 1000 {
+                    break;
+                } else {
+                    tmpcnt+=1;
+                }
+
+                for item in get_markets().await.unwrap() {
+                    let tlm = item.get_tl_version().unwrap();
+                    println!("{}", tlm);
+                    let data = serde_json::to_string(&tlm).expect("json serialization failed");
+                    let data_as_bytes = data.as_bytes();
+
+                    producer.send(&Record {
+                        topic,
+                        partition: -1,
+                        key: (),
+                        value: data_as_bytes,
+                    })?;
+                }
+                interval.tick().await; 
             }
+
         },
         _ => {
             debug!("Unrecognized input parm.");
