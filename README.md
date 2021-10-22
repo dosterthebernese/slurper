@@ -1,5 +1,6 @@
 ### Requirements local
 ## mongo (default install) - used to track runs against coinmetrics, but will probably use for other things as well
+## https://docs.mongodb.com/manual/tutorial/install-mongodb-on-ubuntu/
 ## Druid - not that when you run druid in console, it launches zookeeper (if you ran Kafka by itself, Kafka also has zookeeper, and directs you to launch it)
 ## https://druid.apache.org/docs/latest/tutorials/index.html
 ## Kafka - see above, don't run the zookeeper launch
