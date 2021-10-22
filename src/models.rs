@@ -1,6 +1,8 @@
 // this use statement gets you access to the lib file - you use crate instead of the package name, who the fuck knows why (see any bin rs)
 use crate::*;
 
+use std::collections::HashMap;
+
 use serde::{Serialize,Deserialize};
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use chrono::{DateTime,Utc};
@@ -525,9 +527,32 @@ pub struct PhemexDataWrapperMD {
 
 
 
+#[derive(Deserialize, Debug)]
+pub struct DYDXMarket {
+    pub market: String,
+    pub status: String,
+    #[serde(rename(deserialize = "baseAsset"))]
+    pub base_asset: String,
+}
+
+impl fmt::Display for DYDXMarket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:>10}", self.market, self.status, self.base_asset)
+    }
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct DYDXMarkets {
+    #[serde(rename(deserialize = "markets"))]
+    pub markets: HashMap<String,DYDXMarket>
+}
 
 
 
+
+
+    
 
 
 
