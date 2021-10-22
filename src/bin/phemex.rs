@@ -5,19 +5,24 @@ use slurper::*;
 use log::{info,debug};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{AnalysisArtifact,PhemexDataWrapperAccount,PhemexDataWrapperProducts, PhemexProduct, PhemexCurrency,PhemexDataWrapperMD, PhemexMD,TLPhemexMDSnapshot, CryptoLiquidation, Trades};
-use chrono::{DateTime,Utc};
+use self::models::{PhemexDataWrapperAccount,PhemexDataWrapperProducts, PhemexProduct, PhemexCurrency,PhemexDataWrapperMD, PhemexMD,TLPhemexMDSnapshot};
+use chrono::{Utc,SecondsFormat};
 use time::Duration as NormalDuration;
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
 
-use futures::stream::TryStreamExt;
+//use futures::stream::TryStreamExt;
 use mongodb::{Client};
 use mongodb::{bson::doc};
-use mongodb::options::{FindOptions};
+//use mongodb::options::{FindOptions};
 
 use std::collections::HashMap;
 
+use std::time::Duration;
+
+//use kafka::error::Error as KafkaError;
+use kafka::producer::{Producer, Record, RequiredAcks};
+//use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 
 #[macro_use]
@@ -149,10 +154,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let matches = App::from_yaml(yaml).get_matches();
 //    debug!("{:?}",matches);
 
-    let client = Client::with_uri_str(LOCAL_MONGO).await?;
-    let database = client.database(THE_DATABASE);
-    let tlphsnapcollection = database.collection::<TLPhemexMDSnapshot>(THE_TRADELLAMA_PHEMEX_MD_SNAPSHOT_COLLECTION);
-    let lcollection = database.collection::<CryptoLiquidation>(THE_CRYPTO_LIQUIDATION_COLLECTION);
+    // let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    // let database = client.database(THE_DATABASE);
+    // let tlphsnapcollection = database.collection::<TLPhemexMDSnapshot>(THE_TRADELLAMA_PHEMEX_MD_SNAPSHOT_COLLECTION);
+    // let lcollection = database.collection::<CryptoLiquidation>(THE_CRYPTO_LIQUIDATION_COLLECTION);
 
     // Calling .unwrap() is safe here because "INPUT" is required (if "INPUT" wasn't
     // required we could have used an 'if let' to conditionally get the value)
@@ -178,15 +183,34 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "push-select-md" => {
 
-            let the_eth_boys = vec!["ETHUSD"];
+
+            let broker = "localhost:9092";
+            let topic = "phemex-perpetuals-open-interest";
+
+            let mut producer = Producer::from_hosts(vec![broker.to_owned()])
+                .with_ack_timeout(Duration::from_secs(1))
+                .with_required_acks(RequiredAcks::One)
+                .create()?;
+
+
+
+            let the_eth_boys = vec!["ETHUSD","BTCUSD","AAVEUSD","SOLUSD","UNIUSD"];
             info!("this process should be daemonized");
-            let mut interval = TokioTime::interval(TokioDuration::from_millis(5000));
+            let mut interval = TokioTime::interval(TokioDuration::from_millis(1000));
+
+            let mut tmpcnt = 0;
             loop {
+                if tmpcnt == 10000 {
+                    break;
+                } else {
+                    tmpcnt+=1;
+                }
                 for eth in &the_eth_boys {
                     let current_md = get_market_data(eth).await?;
+
                     let new_tlphsnap = TLPhemexMDSnapshot {
-                        snapshot_date: Utc::now(),
-                        symbol: eth.to_string(),
+                        snapshot_date: &Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+                        symbol: eth,
                         open: current_md.open,
                         high: current_md.high,
                         low: current_md.low,
@@ -196,36 +220,47 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         open_interest: current_md.open_interest
                     };
                     println!("{}", new_tlphsnap);
-                    let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                                
-                    interval.tick().await; 
+//                    let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                                
+
+
+                    let data = serde_json::to_string(&new_tlphsnap).expect("json serialization failed");
+                    let data_as_bytes = data.as_bytes();
+
+                    producer.send(&Record {
+                        topic,
+                        partition: -1,
+                        key: (),
+                        value: data_as_bytes,
+                    })?;
                 }
+                interval.tick().await; 
             }
 
         },
 
 
-        "walk-ethusd-open-interest" => {
+        // "walk-ethusd-open-interest" => {
             
-            let ltdate = Utc::now();
-            let aa = AnalysisArtifact {
-                ltdate: ltdate,
-                symbol: Some("ETHUSD".to_string())
-            };
+        //     let ltdate = Utc::now();
+        //     let aa = AnalysisArtifact {
+        //         ltdate: ltdate,
+        //         symbol: Some("ETHUSD".to_string())
+        //     };
 
-            let history = aa.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
-            let disasf_prices = delta_walk_integers(&history.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
-            let disasf_open_interest = delta_walk_integers(&history.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
-            let its_snapshots = interval_walk_timestamps(&history.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
+        //     let history = aa.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
+        //     let disasf_prices = delta_walk_integers(&history.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
+        //     let disasf_open_interest = delta_walk_integers(&history.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
+        //     let its_snapshots = interval_walk_timestamps(&history.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
 
-            for (idx, q) in history.iter().enumerate() {
-                println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
-            }
+        //     for (idx, q) in history.iter().enumerate() {
+        //         println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
+        //     }
 
-            debug!("open interest delta {:?}", &aa.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
-            debug!("mark price delta {:?}", &aa.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+        //     debug!("open interest delta {:?}", &aa.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+        //     debug!("mark price delta {:?}", &aa.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
 
 
-        },
+        // },
 
         "account-positions" => {
 
@@ -263,44 +298,44 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
                 debug!("{:?} {:?} {:?}      the open interest is {:?}", pos, upl, pos+upl, current_md.open_interest);
 
-                let new_tlphsnap = TLPhemexMDSnapshot {
-                    snapshot_date: Utc::now(),
-                    symbol: p.symbol,
-                    open: current_md.open,
-                    high: current_md.high,
-                    low: current_md.low,
-                    close: current_md.close,
-                    index_price: current_md.index_price,
-                    mark_price: current_md.mark_price,
-                    open_interest: current_md.open_interest
-                };
+                // let new_tlphsnap = TLPhemexMDSnapshot {
+                //     snapshot_date: Utc::now(),
+                //     symbol: p.symbol,
+                //     open: current_md.open,
+                //     high: current_md.high,
+                //     low: current_md.low,
+                //     close: current_md.close,
+                //     index_price: current_md.index_price,
+                //     mark_price: current_md.mark_price,
+                //     open_interest: current_md.open_interest
+                // };
 
-                println!("{}", new_tlphsnap);
-                let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                
-                let tlphsnhist = new_tlphsnap.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
+                // println!("{}", new_tlphsnap);
+                // let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                
+                // let tlphsnhist = new_tlphsnap.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
 
-                let disasf_prices = delta_walk_integers(&tlphsnhist.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
-                let disasf_open_interest = delta_walk_integers(&tlphsnhist.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
-                let its_snapshots = interval_walk_timestamps(&tlphsnhist.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
+                // let disasf_prices = delta_walk_integers(&tlphsnhist.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
+                // let disasf_open_interest = delta_walk_integers(&tlphsnhist.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
+                // let its_snapshots = interval_walk_timestamps(&tlphsnhist.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
 
-                for (idx, q) in tlphsnhist.iter().enumerate() {
-                    println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
-                }
+                // for (idx, q) in tlphsnhist.iter().enumerate() {
+                //     println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
+                // }
 
-                debug!("open interest delta {:?}", &new_tlphsnap.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
-                debug!("mark price delta {:?}", &new_tlphsnap.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+                // debug!("open interest delta {:?}", &new_tlphsnap.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+                // debug!("mark price delta {:?}", &new_tlphsnap.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
 
-                let lh = &new_tlphsnap.get_liquidations(&LOOKBACK_OPEN_INTEREST, &lcollection).await?;
-                let new_trades = Trades {
-                    vts: lh.clone()
-                };
+                // let lh = &new_tlphsnap.get_liquidations(&LOOKBACK_OPEN_INTEREST, &lcollection).await?;
+                // let new_trades = Trades {
+                //     vts: lh.clone()
+                // };
 
-                debug!("total volume of liquidations for the last 26 hours is: {}", new_trades.get_total_volume().unwrap());
-                let (p,q,pq,rkm) = new_trades.get_pqkm().unwrap();
+                // debug!("total volume of liquidations for the last 26 hours is: {}", new_trades.get_total_volume().unwrap());
+                // let (p,q,pq,rkm) = new_trades.get_pqkm().unwrap();
 
-                for (idx, km) in rkm.iter().enumerate() {
-                    debug!("{:?} {:?} {:?}", p[idx],q[idx],km);
-                }
+                // for (idx, km) in rkm.iter().enumerate() {
+                //     debug!("{:?} {:?} {:?}", p[idx],q[idx],km);
+                // }
 
 
             }
