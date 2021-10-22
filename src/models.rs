@@ -534,6 +534,12 @@ pub struct TLDYDXMarket<'a> {
     pub index_price: f64,
     pub oracle_price: f64
 }
+impl TLDYDXMarket<'_> {
+    pub fn get_index_oracle_spread(self: &Self) -> f64 {
+        (self.index_price - self.oracle_price) / self.oracle_price
+    }
+}
+
 
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

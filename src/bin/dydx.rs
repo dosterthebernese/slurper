@@ -148,7 +148,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "all-markets" => {
             for item in get_markets().await.unwrap() {
-                println!("{}", item.get_tl_version().unwrap());
+                let tlm = item.get_tl_version().unwrap();
+                println!("{} {}", tlm, tlm.get_index_oracle_spread());
             }
         },
         _ => {
