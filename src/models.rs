@@ -3,9 +3,10 @@ use crate::*;
 
 use std::collections::HashMap;
 
+
 use serde::{Serialize,Deserialize};
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
-use chrono::{DateTime,Utc};
+use chrono::{DateTime,Utc,SecondsFormat};
 use chrono::format::ParseError;
 
 use mongodb::{Collection};
@@ -16,7 +17,6 @@ use futures::stream::TryStreamExt;
 
 use time::Duration;
 use average::{WeightedMean,Min,Max};
-
 
 use std::fmt; // Import `fmt`
 use std::fmt::Error as NormalError;
@@ -524,8 +524,10 @@ pub struct PhemexDataWrapperMD {
 
 
 
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TLDYDXMarket<'a> {
+    pub snapshot_date: &'a str,
     pub market: &'a str,
     pub status: &'a str,
     pub base_asset: &'a str,
@@ -540,7 +542,7 @@ pub struct TLDYDXMarket<'a> {
 
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread)
+        write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.snapshot_date, self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread)
     }
 }
 
@@ -564,27 +566,6 @@ pub struct DYDXMarket {
     pub oracle_price: String
 }
 
-impl DYDXMarket {
-    pub fn get_tl_version(self: &Self) -> Result<TLDYDXMarket, NormalError> {
-
-        let index_price = self.index_price.parse::<f64>().unwrap();
-        let oracle_price = self.oracle_price.parse::<f64>().unwrap();
-        let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
-
-        Ok(TLDYDXMarket {
-            market: &self.market,
-            status: &self.status,
-            base_asset: &self.base_asset,
-            quote_asset: &self.quote_asset,
-            step_size: self.step_size.parse::<f64>().unwrap(),
-            tick_size: self.tick_size.parse::<f64>().unwrap(),
-            index_price: index_price,
-            oracle_price: oracle_price,
-            tl_derived_index_oracle_spread: tl_derived_index_oracle_spread
-        })
-    }
-
-}
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

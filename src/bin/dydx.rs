@@ -5,7 +5,7 @@ use slurper::*;
 use log::{info,debug};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{DYDXMarkets,DYDXMarket};
+use self::models::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
 use chrono::{Utc,SecondsFormat};
 use time::Duration as NormalDuration;
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
@@ -169,7 +169,24 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 for item in get_markets().await.unwrap() {
-                    let tlm = item.get_tl_version().unwrap();
+
+                    let index_price = item.index_price.parse::<f64>().unwrap();
+                    let oracle_price = item.oracle_price.parse::<f64>().unwrap();
+                    let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
+
+                    let tlm = TLDYDXMarket {
+                        snapshot_date: &Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+                        market: &item.market,
+                        status: &item.status,
+                        base_asset: &item.base_asset,
+                        quote_asset: &item.quote_asset,
+                        step_size: item.step_size.parse::<f64>().unwrap(),
+                        tick_size: item.tick_size.parse::<f64>().unwrap(),
+                        index_price: index_price,
+                        oracle_price: oracle_price,
+                        tl_derived_index_oracle_spread: tl_derived_index_oracle_spread
+                    };
+
                     println!("{}", tlm);
                     let data = serde_json::to_string(&tlm).expect("json serialization failed");
                     let data_as_bytes = data.as_bytes();
