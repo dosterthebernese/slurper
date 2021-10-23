@@ -200,7 +200,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
             let mut tmpcnt = 0;
             loop {
-                if tmpcnt == 1000 {
+                if tmpcnt == 1000000 {
                     break;
                 } else {
                     tmpcnt+=1;
