@@ -20,10 +20,11 @@ use std::collections::HashMap;
 
 use std::time::Duration;
 
-//use kafka::error::Error as KafkaError;
+use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
-//use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
+use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
+use std::str;
 
 #[macro_use]
 extern crate clap;
@@ -31,8 +32,6 @@ use clap::App;
 
 extern crate serde;
 extern crate base64;
-
-
 
 use hex::encode as hex_encode;
 use hmac::{Hmac, Mac, NewMac};
@@ -50,32 +49,6 @@ const LOOKBACK_OPEN_INTEREST: i64 = 100000000; // 1666 minutes or 27 ish hours
 
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
-
-
-// const PRODUCTS_URL: &str = "https://api.phemex.com/public/products";
-// const ACCOUNT_POSTIONS_URL: &str = "https://vapi.phemex.com/accounts/accountPositions?currency=USD";
-// const ACCOUNT_POSTIONS_MSG: &str = "/accounts/accountPositionscurrency=USD";
-
-// const PLACE_ORDER_URL: &str = "https://vapi.phemex.com/orders";
-// const PLACE_ORDER_MSG: &str = "/orders";
-
-
-// async fn get_perpetuals() -> Result<HashMap<String, DYDXMarket>, Box<dyn Error>> {
-
-//     let mut rmap = HashMap::new();
-
-//     let request_url = format!("{}", PRODUCTS_URL);
-//     let response = reqwest::get(&request_url).await?;
-
-//     let payload: PhemexDataWrapperProducts = response.json().await?;
-//     for item in payload.data.products {
-//         if item.product_type == "Perpetual" {
-//             rmap.entry(item.symbol.clone()).or_insert(item);
-//         }
-//     }
-//     Ok(rmap)
-
-// } 
 
 
 async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
@@ -96,32 +69,6 @@ async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
     Ok(rvec)
 } 
-
-// async fn get_currencies() -> Result<Vec<PhemexCurrency>, Box<dyn Error>> {
-
-//      let mut rvec = Vec::new();
-
-//     let request_url = format!("{}", PRODUCTS_URL);
-//     let response = reqwest::get(&request_url).await?;
-
-//     let payload: PhemexDataWrapperProducts = response.json().await?;
-//     for item in payload.data.currencies {
-//         rvec.push(item);
-//     }
-
-//     Ok(rvec)
-// } 
-
-// async fn get_market_data<'a>(symbol: &'a str) -> Result<PhemexMD, Box<dyn Error>> {
-
-//     let request_url = format!("{}?symbol={}", MD_URL,symbol);
-//     debug!("request_url {}", request_url);
-//     let response = reqwest::get(&request_url).await?;
-
-//     let payload: PhemexDataWrapperMD = response.json().await?;
-//     Ok(payload.result)
-
-// } 
 
 
 
@@ -145,6 +92,50 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     info!("processing on directive input: {}", matches.value_of("INPUT").unwrap());
 
     match matches.value_of("INPUT").unwrap() {
+
+
+        "beta-consumer" => {
+
+            let broker = "localhost:9092";
+            let brokers = vec![broker.to_owned()];
+            let topic = "dydx-markets";
+
+
+            let mut con = Consumer::from_hosts(brokers)
+                .with_topic(topic.to_string())
+//                .with_group(group)
+                .with_fallback_offset(FetchOffset::Earliest)
+                .with_offset_storage(GroupOffsetStorage::Kafka)
+                .create()?;
+
+
+            loop {
+                let mss = con.poll()?;
+                if mss.is_empty() {
+                    println!("No messages available right now.");
+                    return Ok(());
+                }
+
+
+                for ms in mss.iter() {
+                    for m in ms.messages() {
+                        let mut buf = Vec::with_capacity(1024);
+                        //println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                        buf.extend_from_slice(m.value);
+                        buf.push(b'\n');                        
+                        let cb =  str::from_utf8(&buf).unwrap();
+                        let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
+                        println!("{}", des_tldm);
+                    }
+                    let _ = con.consume_messageset(ms);
+                }
+                con.commit_consumed()?;
+            }
+
+        },
+
+
+
 
         "all-markets" => {
 
