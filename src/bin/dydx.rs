@@ -173,6 +173,20 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     let index_price = item.index_price.parse::<f64>().unwrap();
                     let oracle_price = item.oracle_price.parse::<f64>().unwrap();
                     let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
+                    let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
+                    let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
+                    let min_order_size = item.min_order_size.parse::<f64>().unwrap();
+
+                    let initial_margin_fraction = item.initial_margin_fraction.parse::<f64>().unwrap();
+                    let maintenance_margin_fraction = item.maintenance_margin_fraction.parse::<f64>().unwrap();
+                    let baseline_position_size = item.baseline_position_size.parse::<f64>().unwrap();
+                    let incremental_position_size = item.incremental_position_size.parse::<f64>().unwrap();
+                    let incremental_initial_margin_fraction = item.incremental_initial_margin_fraction.parse::<f64>().unwrap();
+                    let volume_24h = item.volume_24h.parse::<f64>().unwrap();
+                    let trades_24h = item.trades_24h.parse::<f64>().unwrap();
+                    let open_interest = item.open_interest.parse::<f64>().unwrap();
+                    let max_position_size = item.max_position_size.parse::<f64>().unwrap();
+                    let asset_resolution = item.asset_resolution.parse::<f64>().unwrap();
 
                     let tlm = TLDYDXMarket {
                         snapshot_date: &Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
@@ -184,7 +198,22 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         tick_size: item.tick_size.parse::<f64>().unwrap(),
                         index_price: index_price,
                         oracle_price: oracle_price,
-                        tl_derived_index_oracle_spread: tl_derived_index_oracle_spread
+                        tl_derived_index_oracle_spread: tl_derived_index_oracle_spread,
+                        price_change_24h: price_change_24h,
+                        next_funding_rate: next_funding_rate,
+                        next_funding_at: &item.next_funding_at,
+                        min_order_size: min_order_size,
+                        instrument_type: &item.instrument_type,
+                        initial_margin_fraction: initial_margin_fraction,
+                        maintenance_margin_fraction: maintenance_margin_fraction,
+                        baseline_position_size: baseline_position_size,
+                        incremental_position_size: incremental_position_size,
+                        incremental_initial_margin_fraction: incremental_initial_margin_fraction,
+                        volume_24h: volume_24h,
+                        trades_24h: trades_24h,
+                        open_interest: open_interest,
+                        max_position_size: max_position_size,
+                        asset_resolution: asset_resolution,
                     };
 
                     println!("{}", tlm);

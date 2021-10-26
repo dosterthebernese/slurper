@@ -33,6 +33,10 @@ extern crate serde;
 extern crate base64;
 
 
+extern crate dotenv;
+
+use dotenv::dotenv;
+use std::env;
 
 use hex::encode as hex_encode;
 use hmac::{Hmac, Mac, NewMac};
@@ -45,10 +49,6 @@ use serde::{Deserialize, Serialize};
 //type HmacSha256 = Hmac<Sha256>;
 
 const LOOKBACK_OPEN_INTEREST: i64 = 100000000; // 1666 minutes or 27 ish hours
-
-// i know bad but will change, only works on my IP, and there's 20 bucks in the account
-const API_TOKEN: &str = "89124f02-5e64-436a-bb3c-a5f4d720664d";
-const API_SECRET: &str = "9B1Yl3NZV0DJS7Q3xJ9LRgfJEFwwdhST0Ihh0DBjePo5Y2I1MjNmZS1hOTkzLTQzNjMtODQ3MS03ZDY0N2M1ZTZmOTk";
 
 
 const MD_URL: &str = "https://api.phemex.com/md/ticker/24hr";
@@ -148,6 +148,12 @@ async fn get_market_data<'a>(symbol: &'a str) -> Result<PhemexMD, Box<dyn Error>
 pub async fn main() -> Result<(), Box<dyn Error>> {
 
     env_logger::init(); 
+
+    dotenv().ok();
+
+    let api_secret = dotenv::var("API_SECRET").unwrap();
+    let api_token = dotenv::var("API_TOKEN").unwrap();
+
 
 
     let yaml = load_yaml!("../coinmetrics.yml");
@@ -271,12 +277,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let request_url = format!("{}",ACCOUNT_POSTIONS_URL);
             let msg = format!("{}{}", ACCOUNT_POSTIONS_MSG,&expstr);
 
-            let mut signed_key = Hmac::<Sha256>::new_from_slice(API_SECRET.as_bytes()).unwrap();
+            let mut signed_key = Hmac::<Sha256>::new_from_slice(api_secret.as_bytes()).unwrap();
             signed_key.update(msg.as_bytes());
             let signature = hex_encode(signed_key.finalize().into_bytes());            
 
             let client = reqwest::Client::builder().build()?;
-            let response = client.get(&request_url).header("x-phemex-access-token", API_TOKEN).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).send().await?;
+            let response = client.get(&request_url).header("x-phemex-access-token", api_token).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).send().await?;
 
             let payload: PhemexDataWrapperAccount = response.json().await?;
             for p in payload.data.positions {
@@ -371,12 +377,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let msg = format!("{}{}{}", PLACE_ORDER_MSG,&expstr,params);
             debug!("{}",msg);
 
-            let mut signed_key = Hmac::<Sha256>::new_from_slice(API_SECRET.as_bytes()).unwrap();
+            let mut signed_key = Hmac::<Sha256>::new_from_slice(api_secret.as_bytes()).unwrap();
             signed_key.update(msg.as_bytes());
             let signature = hex_encode(signed_key.finalize().into_bytes());            
 
             let client = reqwest::Client::builder().build()?;
-            let response = client.post(&request_url).header("x-phemex-access-token", API_TOKEN).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).json(&params).body(params.to_owned()).send().await?;
+            let response = client.post(&request_url).header("x-phemex-access-token", api_token).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).json(&params).body(params.to_owned()).send().await?;
 
             let payload = response.text().await?;
             debug!("{:?}", payload);
