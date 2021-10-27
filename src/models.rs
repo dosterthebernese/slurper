@@ -64,6 +64,22 @@ impl CryptoMarket<'_> {
 
     }
 
+    pub async fn get_last_migrated_trade(self: &Self, collection: &Collection<CryptoTrade>) -> Result<DateTime<Utc>, Error> {
+
+        let filter = doc! {"market": &self.market};
+        let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+
+        let mut big_bang = chrono::offset::Utc::now();
+        big_bang = big_bang - Duration::minutes(60);
+
+        while let Some(cm) = cursor.try_next().await? {
+            big_bang = cm.trade_date;
+        }
+        Ok(big_bang)
+
+    }
+
     pub fn get_coin(self: &Self) -> Result<&str, NormalError> {
         let v: Vec<&str> = self.market.split("-").collect();
         if v.len() == 1 {
@@ -236,11 +252,11 @@ impl KafkaCryptoTrade<'_> {
         let trade_date = DateTime::parse_from_rfc3339(&self.trade_date).unwrap();
         Ok(CryptoTrade {
             trade_date: trade_date.with_timezone(&Utc),
-            coin_metrics_id: &self.coin_metrics_id,
+            coin_metrics_id: self.coin_metrics_id.to_owned(),
             price: self.price,
             quantity: self.quantity,
-            market: self.market,
-            tx_type: self.tx_type
+            market: self.market.to_owned(),
+            tx_type: self.tx_type.to_owned()
         })
     }
 
@@ -257,17 +273,17 @@ impl fmt::Display for KafkaCryptoTrade<'_> {
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CryptoTrade<'a> {
+pub struct CryptoTrade {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub trade_date: DateTime<Utc>,
-    pub coin_metrics_id: &'a str,
+    pub coin_metrics_id: String,
     pub price: f64,
     pub quantity: f64,
-    pub market: &'a str,
-    pub tx_type: &'a str,
+    pub market: String,
+    pub tx_type: String,
 }
 
-impl CryptoTrade<'_> {
+impl CryptoTrade {
 
     pub fn get_net(self: &Self) -> Result<f64, ParseError> {
         Ok(&self.price * &self.quantity)
@@ -275,7 +291,7 @@ impl CryptoTrade<'_> {
 
 }
 
-impl fmt::Display for CryptoTrade<'_> {
+impl fmt::Display for CryptoTrade {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:<10} {:<35} {:>6.2} {:>9.4} {:<30} {:<5}", 
             &self.coin_metrics_id, &self.trade_date, self.price, self.quantity, &self.market, &self.tx_type)

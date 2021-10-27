@@ -3,7 +3,7 @@ use slurper::*;
 
 use std::time::Duration;
 
-use log::{debug,info, error};
+use log::{debug,info,warn,error};
 use std::error::Error;
 use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades,TimeRange, MarketSummary, RangeBoundMarketSummary};
 use chrono::{DateTime,Utc};
@@ -392,6 +392,17 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let topic = "coinmetrics-markets";
 
 
+            // this is a hack, for prep on a kraken meeting
+            let kraken_markets = get_kraken().await?;
+            let mut max_market_date_hm = HashMap::new();
+            for km in kraken_markets {
+                let market = CryptoMarket {
+                    market: &km
+                };
+                let last_updated = market.get_last_migrated_trade(&collection).await?;
+                max_market_date_hm.entry(km.clone()).or_insert(last_updated);                
+            }
+
             let mut con = Consumer::from_hosts(brokers)
                 .with_topic(topic.to_string())
 //                .with_group(group)
@@ -419,7 +430,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         println!("{}", des_kct);
                         let mongo_crypto_trade = des_kct.get_crypto_trade_for_mongo().unwrap();
                         println!("{}", mongo_crypto_trade);                        
-                        let _result = collection.insert_one(mongo_crypto_trade, None).await?;                                    
+                        if mongo_crypto_trade.trade_date > max_market_date_hm[&mongo_crypto_trade.market] {
+                            let _result = collection.insert_one(mongo_crypto_trade, None).await?;                                                            
+                        } else {
+                            warn!("we have seen this trade before - SKIPPING");
+                        }
                     }
                     let _ = con.consume_messageset(ms);
                 }
