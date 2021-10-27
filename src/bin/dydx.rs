@@ -108,11 +108,16 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 .with_offset_storage(GroupOffsetStorage::Kafka)
                 .create()?;
 
+            let mut v_spread = Vec::new();
+            let mut v_index = Vec::new();
+            // let mut v_for_km = Vec::new();
 
             loop {
                 let mss = con.poll()?;
                 if mss.is_empty() {
                     println!("No messages available right now.");
+
+
                     return Ok(());
                 }
 
@@ -126,11 +131,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         let cb =  str::from_utf8(&buf).unwrap();
                         let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
                         println!("{}", des_tldm);
+                        v_spread.push(des_tldm.tl_derived_index_oracle_spread);
+                        v_index.push(des_tldm.index_price);
                     }
                     let _ = con.consume_messageset(ms);
                 }
                 con.commit_consumed()?;
-            }
+            }   
 
         },
 

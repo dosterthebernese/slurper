@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use log::{debug,info};
 use std::error::Error;
-use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket};
+use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades};
 use chrono::{DateTime,Utc};
 
 use chrono::{SecondsFormat};
@@ -32,6 +32,8 @@ extern crate clap;
 use clap::App;
 
 extern crate serde;
+
+use std::str;
 
 
 use serde::Deserialize;
@@ -213,6 +215,28 @@ async fn get_hotlist() -> Result<Vec<String>, Box<dyn Error>> {
 
 }
 
+async fn get_kraken() -> Result<Vec<String>, Box<dyn Error>> {
+
+    let mut hotlist = Vec::new();
+
+    let request_url = format!("{}", MARKETS_URL);
+    let response = reqwest::get(&request_url).await?;
+    let payload: CMDataWrapperMarkets = response.json().await?;
+
+    for cmditem in payload.cmds {
+        let market = cmditem.market.clone();
+        let this_market = CryptoMarket {market: &market};
+
+        if this_market.is_kraken() {
+            hotlist.push(market);        
+        }
+    }
+
+    Ok(hotlist)
+
+}
+
+
 
 
 #[tokio::main]
@@ -253,7 +277,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         },
 
-        "beta-consumer" => {
+        "consumer-for-mongo" => {
+
+            let client = Client::with_uri_str(LOCAL_MONGO).await?;
+            let database = client.database(THE_DATABASE);
+            let collection = database.collection::<CryptoTrade>(THE_CRYPTO_TRADES_COLLECTION);
 
             let broker = "localhost:9092";
             let brokers = vec![broker.to_owned()];
@@ -267,7 +295,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 .with_offset_storage(GroupOffsetStorage::Kafka)
                 .create()?;
 
+
             loop {
+
                 let mss = con.poll()?;
                 if mss.is_empty() {
                     println!("No messages available right now.");
@@ -276,18 +306,44 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
                 for ms in mss.iter() {
                     for m in ms.messages() {
-                        println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                        let mut buf = Vec::with_capacity(1024);
+                        //println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                        buf.extend_from_slice(m.value);
+                        // buf.push(b'\n');                        
+                        let cb =  str::from_utf8(&buf).unwrap();
+                        let des_kct: KafkaCryptoTrade = serde_json::from_str(cb).unwrap();
+                        println!("{}", des_kct);
+                        let mongo_crypto_trade = des_kct.get_crypto_trade_for_mongo().unwrap();
+                        println!("{}", mongo_crypto_trade);                        
+                        let _result = collection.insert_one(mongo_crypto_trade, None).await?;                                    
                     }
                     let _ = con.consume_messageset(ms);
                 }
                 con.commit_consumed()?;
-            }
+            }   
 
         },
+
+
+
 
         "ts-append-hotlist" => {
 
             let all_markets = get_hotlist().await?;
+
+            for chunk in &all_markets.into_iter().chunks(10) {
+                let subset_of_markets = chunk.collect::<Vec<_>>();
+                debug!("Processing the following subset of coinmetrics markets: {:?}", &subset_of_markets);
+                let dcol: Vec<_> = subset_of_markets.into_iter().map(|n| process_market(n)).collect();
+                let _rdvec = join_all(dcol).await;
+            }
+
+
+        },
+
+        "ts-append-kraken" => {
+
+            let all_markets = get_kraken().await?;
 
             for chunk in &all_markets.into_iter().chunks(10) {
                 let subset_of_markets = chunk.collect::<Vec<_>>();
