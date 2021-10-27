@@ -55,7 +55,7 @@ impl<'a> fmt::Display for StrError<'a> {
 
 pub fn formatted_company<'a>(company: &str) -> &str {
     match company {
-        "rivernorth" => "RiverNorth Capital Management LLC",
+        "bigbadvoodoodaddy" => "bigbadvoodoodaddy Capital Management LLC",
         _ => "ERROR"
     }
 }
@@ -149,7 +149,7 @@ pub fn contra<'a>(company: &'a str, tx: &'a str) -> &'a str {
 
 pub fn am_buy<'a>(company: &'a str, tx: &'a str) -> bool {
     match company {
-        "rivernorth" => match tx {
+        "bigbadvoodoodaddy" => match tx {
             "BUY" | "BUYL" | "Buy" | "REINVEST" => true,
             _ => false,
         },
@@ -162,7 +162,7 @@ pub fn am_buy<'a>(company: &'a str, tx: &'a str) -> bool {
 
 pub fn am_sell<'a>(company: &'a str, tx: &'a str) -> bool {
     match company {
-        "rivernorth" => match tx {
+        "bigbadvoodoodaddy" => match tx {
             "SELL" | "SELLL" | "Sell" => true,
             _ => false,
         },
@@ -176,7 +176,7 @@ pub fn am_sell<'a>(company: &'a str, tx: &'a str) -> bool {
 
 pub fn am_short<'a>(company: &'a str, tx: &'a str) -> bool {
     match company {
-        "rivernorth" => match tx {
+        "bigbadvoodoodaddy" => match tx {
             "SHORT" | "SELLS" | "SELLSHORT" | "Short" => true,
             _ => false,
         },
@@ -189,7 +189,7 @@ pub fn am_short<'a>(company: &'a str, tx: &'a str) -> bool {
 
 pub fn am_cover<'a>(company: &'a str, tx: &'a str) -> bool {
     match company {
-        "rivernorth" => match tx {
+        "bigbadvoodoodaddy" => match tx {
             "COVER" | "BUYC" | "COVERSHORT" | "BUYCOVER" | "Cover" => true,
             _ => false,
         },
@@ -203,7 +203,7 @@ pub fn am_cover<'a>(company: &'a str, tx: &'a str) -> bool {
 
 pub fn mask_account<'a>(company: &'a str, aid: &'a str) -> &'a str {
     match company {
-        "rivernorth" => match aid {
+        "bigbadvoodoodaddy" => match aid {
             "DMSFX" => "Carter Endowment",
             "FGP" => "Reagan Pension",
             "OMOIX" => "Kennedy Trust",
