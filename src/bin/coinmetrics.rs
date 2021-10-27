@@ -3,24 +3,30 @@ use slurper::*;
 
 use std::time::Duration;
 
-use log::{debug,info};
+use log::{debug,info, error};
 use std::error::Error;
-use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades};
+use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades,TimeRange, MarketSummary, RangeBoundMarketSummary};
 use chrono::{DateTime,Utc};
 
 use chrono::{SecondsFormat};
 
 use futures::future::join_all;
 
-// use mongodb::{Collection};
+use mongodb::{Collection};
 use mongodb::{Client};
 use mongodb::{bson::doc};
+use futures::stream::{self, StreamExt}; // this gets you next in aggregation cursor
+
+// use futures::stream::TryStreamExt;
 // use mongodb::options::{FindOptions};
+
+
 
 // use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
+//use std::iter::FromIterator;
 use std::collections::HashMap;
 
 extern crate itertools;
@@ -237,6 +243,63 @@ async fn get_kraken() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 
+async fn agg_rbms<'a, T>(description_surname: &'a str, tr: &TimeRange, collection: &Collection<T>) -> Result<Vec<RangeBoundMarketSummary>, Box<dyn Error>> {
+
+    let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), description_surname);
+
+    let mut rvec = Vec::new();    
+    let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
+    let stage_group_market = doc! {"$group": {"_id": "$market", 
+    "cnt": { "$sum": 1 }, "qty": { "$sum": "$quantity" }, 
+    "std": { "$stdDevPop": "$price" }, 
+    "na": { "$sum": {"$multiply": ["$price","$quantity"]}}, }};
+    let pipeline = vec![filter, stage_group_market];
+
+    let mut results = collection.aggregate(pipeline, None).await?;
+    while let Some(result) = results.next().await {
+       let doc: MarketSummary = bson::from_document(result?)?;
+       let rbdoc = RangeBoundMarketSummary {
+        gtedate: tr.gtedate,
+        ltdate: tr.ltdate,
+        description: description.clone(),
+        market_summary: doc
+       };
+       rvec.push(rbdoc);
+    }
+
+    Ok(rvec)
+
+}
+
+
+// async fn agg_rbes<'a>(tr: &TimeRange, collection: &Collection<CryptoTrade>) -> Result<Vec<RangeBoundExchangeSummary>, Box<dyn Error>> {
+
+//     let description = format!("{} {}", (tr.ltdate - tr.gtedate).num_minutes(), "Trade Count");
+
+//     let mut rvec = Vec::new();    
+//     let filter = doc! {"$match": {"trade_date": {"$gte": tr.gtedate, "$lt": tr.ltdate}}};
+//     let stage_group_market = doc! {"$group": {"_id": {"trade_llama_exchange": "$trade_llama_exchange", "trade_llama_instrument_type":"$trade_llama_instrument_type", "tx_type":"$tx_type"}, 
+//     "cnt": { "$sum": 1 }, "na": { "$sum": {"$multiply": ["$price","$quantity"]}}, }};
+//     let pipeline = vec![filter, stage_group_market];
+
+//     let mut results = collection.aggregate(pipeline, None).await?;
+//     while let Some(result) = results.next().await {
+//        let doc: ExchangeSummary = bson::from_document(result?)?;
+//        let rbdoc = RangeBoundExchangeSummary {
+//         gtedate: tr.gtedate,
+//         ltdate: tr.ltdate,
+//         description: description.clone(),
+//         exchange_summary: doc
+//        };
+//        rvec.push(rbdoc);
+//     }
+
+//     Ok(rvec)
+
+// }
+
+
+
 
 
 #[tokio::main]
@@ -276,6 +339,47 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
 
         },
+
+
+
+        "cluster-crypto-trades" => {
+
+            let client = Client::with_uri_str(LOCAL_MONGO).await?;
+            let database = client.database(THE_DATABASE);
+            let collection = database.collection::<CryptoTrade>(THE_CRYPTO_TRADES_COLLECTION);
+
+            let time_ranges = get_time_ranges("2021-10-27 00:00:00","2021-10-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+
+            for otr in &time_ranges{
+                let hourlies = otr.get_hourlies().unwrap();
+                assert_eq!(hourlies.len(),24);
+
+                // warn!("this delete concurrency run does not specify description, so both trade and liquidation summs are deleted");
+                // let dcol: Vec<_> = (0..24).map(|n| hourlies[n].delete_exact_range(&rbmscollection)).collect();
+                // let _rdvec = join_all(dcol).await;
+
+                let hcol: Vec<_> = (0..24).map(|n| agg_rbms("Trade Count", &hourlies[n],&collection)).collect();
+                let rvec = join_all(hcol).await;
+
+                debug!("first trades");
+                for (idx, r) in rvec.iter().enumerate() {
+                    match r {
+                        Ok(aggsv) => {
+                            for aggs in aggsv {
+                                println!("{}", aggs);
+//                                let _result = rbmscollection.insert_one(aggs, None).await?;                                                                
+                            }
+                        },
+                        Err(error) => {
+                            error!("Hour {:?} Error: {:?}", idx+1,  error);
+                            panic!("We choose to no longer live.")                            
+                        }
+                    }
+                }
+            }
+
+        },
+
 
         "consumer-for-mongo" => {
 

@@ -696,6 +696,41 @@ pub struct DYDXMarkets {
 
 
 
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MarketSummary {
+   pub _id: String,
+   pub cnt: f64,
+   pub qty: f64,
+   pub std: f64,
+   pub na: f64,
+}
+
+impl fmt::Display for MarketSummary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<30} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self._id, &self.cnt, &self.qty, &self.std, &self.na)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RangeBoundMarketSummary {
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub gtedate: DateTime<Utc>,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub ltdate: DateTime<Utc>,    
+    pub description: String,
+    pub market_summary: MarketSummary
+}
+
+impl fmt::Display for RangeBoundMarketSummary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<30} {:<30} {:<30} {:<40} {:>9.2} {:>9.2} {:>9.2} {:>9.2}", &self.gtedate, &self.ltdate, &self.description, &self.market_summary._id, &self.market_summary.cnt, &self.market_summary.qty, &self.market_summary.std, &self.market_summary.na)
+    }
+}
+
+
+
+
 #[derive(Debug, Clone)]
 pub struct TimeRange {
     pub gtedate: DateTime<Utc>,
