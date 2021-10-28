@@ -753,7 +753,7 @@ pub struct KrakenAssets {
 pub struct KrakenTrade<'a> {
     price: f64,
     quantity: f64,
-    some_number: f64,
+    unix_epoch_timestamp: f64,
     tx_type: &'a str,
     order_type: &'a str,
     some_other_thing: Option<&'a str>
