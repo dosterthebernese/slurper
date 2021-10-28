@@ -700,6 +700,65 @@ pub struct DYDXMarkets {
     
 
 
+#[derive(Deserialize, Debug)]
+pub struct KrakenAssetPair {
+    pub altname: String,
+    pub wsname: String,
+    pub aclass_base: String,
+    pub base: String,
+    pub aclass_quote: String,
+    pub quote: String,
+    pub lot: String,
+    pub pair_decimals: i32,
+    pub lot_decimals: i32,
+    pub lot_multiplier: i32
+}
+
+impl fmt::Display for KrakenAssetPair {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, " {:>10}", self.altname)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct KrakenAssetPairs {
+    #[serde(rename(deserialize = "result"))]
+    pub asset_pairs: HashMap<String,KrakenAssetPair>
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct KrakenAsset {
+    pub aclass: String,
+    pub altname: String,
+    pub decimals: i32,
+    pub display_decimals: i32
+}
+
+impl fmt::Display for KrakenAsset {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:>10} {:>10} {:>10} {:>10}", self.aclass, self.altname, self.decimals, self.display_decimals)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct KrakenAssets {
+    #[serde(rename(deserialize = "result"))]
+    pub assets: HashMap<String,KrakenAsset>
+}
+
+
+// unfortunately, I could never get this to serde deserialize magic, so we use the serde_json elsewhere, and 
+// build a normal struct
+pub struct KrakenTrade<'a> {
+    price: f64,
+    quantity: f64,
+    some_number: f64,
+    tx_type: &'a str,
+    order_type: &'a str,
+    some_other_thing: Option<&'a str>
+}
+
 
 
 
