@@ -1,12 +1,11 @@
 // this use statement gets you access to the lib file
 use slurper::*;
 
-
 use log::{info,debug,error};
 use std::error::Error;
 //use std::convert::TryFrom;
 use self::models::{KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade, TLDYDXMarket};
-use chrono::{Utc,SecondsFormat};
+use chrono::{DateTime,NaiveDateTime,Utc,SecondsFormat};
 use time::Duration as NormalDuration;
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
@@ -87,7 +86,10 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 
 // I could not get this to parse using serde the usual way - see model KrakenTrade
 // so different than normal reqwest map to struct
-async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'a str) -> Result<i32, Box<dyn Error>> {
+async fn process_trades<'a>(item: &'a KrakenAssetPair) -> Result<usize, Box<dyn Error>> {
+
+    let recreated_name = format!("{}{}", item.base, item.quote);
+    let ts_url1 = format!("{}?pair={}", TRADES_URL, item.altname); // query trades with altname, works - but some need the recreated name in the return json 
 
     let broker = "localhost:9092";
     let topic = "kraken-markets";
@@ -102,60 +104,88 @@ async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'
     let text_representation_of_json = response_ts.text().await?;
     let json_from_text: Value = serde_json::from_str(&text_representation_of_json)?;
 
-    match json_from_text["result"][altname].as_array() {
+    let trades_array = match json_from_text["result"][altname].as_array() {
         None => {
             info!("This pair does not return using altname, I will try recreated {} {}", altname, recreated_name);
             match json_from_text["result"][altname].as_array() {
                 None => {
                     error!("Neither the altname nor recreated name are in this array: {}", json_from_text);
                     error!("I am going to return an empty vessel");
-                    Ok(0)
+                    None
                 },
                 _ => {
-                    let trades = json_from_text["result"][recreated_name].as_array().unwrap();
-                    for trade in trades {
-                        debug!("{}", trade);
-
-                        let tx_type = match trade[3] {
-                            "b" => "Buy",
-                            "s" => "Sell",
-                            _ => trade[3]
-                        };
-
-                        let order_type = match trade[4] {
-                            "m" => "Market",
-                            "l" => "Limit",
-                            _ => trade[4]
-                        };
-
-                        let some_other_thing = match trade[5] {
-                            "" => None,
-                           _ => Some(trade[5])
-                        };
-
-                        let trade_date = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(61, 0), Utc);
-                        let trade_date_str = trade_date.to_rfc3339_opts(SecondsFormat::Secs, true)
-                        debug!("{} {}", trade_date, trade_date_str);
-
-                        let new_kafka_kraken_trade = KafkaKrakenTrade {
-                            price: trade[0].parse::<f64>().unwrap(),
-                            quantity: trade[1].parse::<f64>().unwrap(),
-                            trade_date: trade_date_str, 
-                            tx_type: tx_type,
-                            order_type: order_type,
-                            some_other_thing: some_other_thing
-                        }
-                    };
-                    Ok(trades.len())            
+                    Some(json_from_text["result"][recreated_name].as_array().unwrap())
                 }
             }
         },
         _ => {
-            let trades = json_from_text["result"][altname].as_array().unwrap();
+            Some(json_from_text["result"][altname].as_array().unwrap())
+        }
+    };
+
+
+    match trades_array {
+        Some(trades) => {
+
             for trade in trades {
                 debug!("{}", trade);
+
+                let tx_type = match trade[3].as_str().unwrap() {
+                    "b" => "Buy",
+                    "s" => "Sell",
+                    _ => trade[3].as_str().unwrap()
+                };
+
+                let order_type = match trade[4].as_str().unwrap() {
+                    "m" => "Market",
+                    "l" => "Limit",
+                    _ => trade[4].as_str().unwrap()
+                };
+
+                let some_other_thing = match trade[5].as_str().unwrap() {
+                    "" => None,
+                   _ => Some(trade[5].as_str().unwrap())
+                };
+
+                let unix_epoch = trade[2].as_f64().unwrap();
+                let unix_epoch_as_int = unix_epoch as i64;
+
+
+                let trade_date = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(unix_epoch_as_int, 0), Utc);
+                let trade_date_str = trade_date.to_rfc3339_opts(SecondsFormat::Secs, true);
+                debug!("{} {} {} {}", unix_epoch, unix_epoch_as_int, trade_date, trade_date_str);
+
+                let new_kafka_kraken_trade = KafkaKrakenTrade {
+                    price: trade[0].as_str().unwrap().parse::<f64>().unwrap(),
+                    quantity: trade[1].as_str().unwrap().parse::<f64>().unwrap(),
+                    trade_date: &trade_date_str, 
+                    tx_type: tx_type,
+                    order_type: order_type,
+                    some_other_thing: some_other_thing
+                };
+
+                println!("{}", new_kafka_kraken_trade);
+
+                let data = serde_json::to_string(&new_kafka_kraken_trade).expect("json serialization failed");
+                let data_as_bytes = data.as_bytes();
+
+                producer.send(&Record {
+                    topic,
+                    partition: -1,
+                    key: (),
+                    value: data_as_bytes,
+                })?;
+
+
             };
-            Ok(trades.len())            
+
+            Ok(trades.len())
+
+
+
+        },
+        _ => {
+            Ok(0)
         }
     }
 
@@ -209,15 +239,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 .with_required_acks(RequiredAcks::One)
                 .create()?;
 
-            for item in get_asset_pairs().await.unwrap() {
-                let recreated_name = format!("{}{}", item.base, item.quote);
-                let ts_url1 = format!("{}?pair={}", TRADES_URL, item.altname); // query trades with altname, works - but some need the recreated name in the return json 
-                let foo = get_trades(&item.altname, &recreated_name, &ts_url1).await.unwrap();
-                debug!("{:?}", foo);
-                // for trade in get_trades(&ts_url1).await.unwrap().asset_pair {
-                //     println!("{:?}", trade);                
-                // }
-            }
+            let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(&item)).collect();
+            let _rdvec = join_all(dcol).await;
 
         },
 

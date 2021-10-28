@@ -750,15 +750,21 @@ pub struct KrakenAssets {
 
 // unfortunately, I could never get this to serde deserialize magic, so we use the serde_json elsewhere, and 
 // build a normal struct
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KafkaKrakenTrade<'a> {
-    price: f64,
-    quantity: f64,
-    trade_date: &'a str,
-    tx_type: &'a str,
-    order_type: &'a str,
-    some_other_thing: Option<&'a str>
+    pub price: f64,
+    pub quantity: f64,
+    pub trade_date: &'a str,
+    pub tx_type: &'a str,
+    pub order_type: &'a str,
+    pub some_other_thing: Option<&'a str>
 }
 
+impl fmt::Display for KafkaKrakenTrade<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:>10.4} {:>10.4} {:>10} {:>10} {:>10} {:>10}", self.price, self.quantity, self.trade_date, self.tx_type, self.order_type, self.some_other_thing.unwrap_or(""))
+    }
+}
 
 
 
