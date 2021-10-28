@@ -23,6 +23,9 @@ use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
+use futures::future::join_all;
+
+
 use std::str;
 
 #[macro_use]
@@ -88,6 +91,7 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 // so different than normal reqwest map to struct
 async fn process_trades<'a>(item: &'a KrakenAssetPair) -> Result<usize, Box<dyn Error>> {
 
+    let altname = &item.altname;
     let recreated_name = format!("{}{}", item.base, item.quote);
     let ts_url1 = format!("{}?pair={}", TRADES_URL, item.altname); // query trades with altname, works - but some need the recreated name in the return json 
 
@@ -99,7 +103,7 @@ async fn process_trades<'a>(item: &'a KrakenAssetPair) -> Result<usize, Box<dyn 
         .with_required_acks(RequiredAcks::One)
         .create()?;
 
-    let request_url_ts = format!("{}", whole_url);
+    let request_url_ts = format!("{}", ts_url1);
     let response_ts = reqwest::get(&request_url_ts).await?;
     let text_representation_of_json = response_ts.text().await?;
     let json_from_text: Value = serde_json::from_str(&text_representation_of_json)?;
