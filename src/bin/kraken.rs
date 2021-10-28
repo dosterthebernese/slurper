@@ -160,6 +160,7 @@ async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> 
                 debug!("{} {} {} {}", unix_epoch, unix_epoch_as_int, trade_date, trade_date_str);
 
                 let new_kafka_kraken_trade = KafkaKrakenTrade {
+                    asset_pair: &item.altname,
                     price: trade[0].as_str().unwrap().parse::<f64>().unwrap(),
                     quantity: trade[1].as_str().unwrap().parse::<f64>().unwrap(),
                     trade_date: &trade_date_str, 

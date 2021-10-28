@@ -752,6 +752,7 @@ pub struct KrakenAssets {
 // build a normal struct
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KafkaKrakenTrade<'a> {
+    pub asset_pair: &'a str,
     pub price: f64,
     pub quantity: f64,
     pub trade_date: &'a str,
@@ -762,7 +763,7 @@ pub struct KafkaKrakenTrade<'a> {
 
 impl fmt::Display for KafkaKrakenTrade<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:>10.4} {:>10.4} {:>10} {:>10} {:>10} {:>10}", self.price, self.quantity, self.trade_date, self.tx_type, self.order_type, self.some_other_thing.unwrap_or(""))
+        write!(f, "{:>10} {:>10.4} {:>10.4} {:>10} {:>10} {:>10} {:>10}", self.asset_pair, self.price, self.quantity, self.trade_date, self.tx_type, self.order_type, self.some_other_thing.unwrap_or(""))
     }
 }
 
