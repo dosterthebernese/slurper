@@ -5,7 +5,7 @@ use slurper::*;
 use log::{info,debug,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KrakenTrade, TLDYDXMarket};
+use self::models::{KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade, TLDYDXMarket};
 use chrono::{Utc,SecondsFormat};
 use time::Duration as NormalDuration;
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
@@ -87,7 +87,15 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 
 // I could not get this to parse using serde the usual way - see model KrakenTrade
 // so different than normal reqwest map to struct
-async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'a str) -> Result<(), Box<dyn Error>> {
+async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'a str) -> Result<i32, Box<dyn Error>> {
+
+    let broker = "localhost:9092";
+    let topic = "kraken-markets";
+
+    let mut producer = Producer::from_hosts(vec![broker.to_owned()])
+        .with_ack_timeout(Duration::from_secs(1))
+        .with_required_acks(RequiredAcks::One)
+        .create()?;
 
     let request_url_ts = format!("{}", whole_url);
     let response_ts = reqwest::get(&request_url_ts).await?;
@@ -101,14 +109,44 @@ async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'
                 None => {
                     error!("Neither the altname nor recreated name are in this array: {}", json_from_text);
                     error!("I am going to return an empty vessel");
-                    Ok(())
+                    Ok(0)
                 },
                 _ => {
                     let trades = json_from_text["result"][recreated_name].as_array().unwrap();
                     for trade in trades {
                         debug!("{}", trade);
+
+                        let tx_type = match trade[3] {
+                            "b" => "Buy",
+                            "s" => "Sell",
+                            _ => trade[3]
+                        };
+
+                        let order_type = match trade[4] {
+                            "m" => "Market",
+                            "l" => "Limit",
+                            _ => trade[4]
+                        };
+
+                        let some_other_thing = match trade[5] {
+                            "" => None,
+                           _ => Some(trade[5])
+                        };
+
+                        let trade_date = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(61, 0), Utc);
+                        let trade_date_str = trade_date.to_rfc3339_opts(SecondsFormat::Secs, true)
+                        debug!("{} {}", trade_date, trade_date_str);
+
+                        let new_kafka_kraken_trade = KafkaKrakenTrade {
+                            price: trade[0].parse::<f64>().unwrap(),
+                            quantity: trade[1].parse::<f64>().unwrap(),
+                            trade_date: trade_date_str, 
+                            tx_type: tx_type,
+                            order_type: order_type,
+                            some_other_thing: some_other_thing
+                        }
                     };
-                    Ok(())            
+                    Ok(trades.len())            
                 }
             }
         },
@@ -117,7 +155,7 @@ async fn get_trades<'a>(altname: &'a str, recreated_name: &'a str, whole_url: &'
             for trade in trades {
                 debug!("{}", trade);
             };
-            Ok(())            
+            Ok(trades.len())            
         }
     }
 
@@ -154,14 +192,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         },
         "all-assets" => {
-
-            let broker = "localhost:9092";
-            let topic = "kraken-markets";
-
-            let mut producer = Producer::from_hosts(vec![broker.to_owned()])
-                .with_ack_timeout(Duration::from_secs(1))
-                .with_required_acks(RequiredAcks::One)
-                .create()?;
 
             for item in get_assets().await.unwrap() {
                 println!("{}", item);

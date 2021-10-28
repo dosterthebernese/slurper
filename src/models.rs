@@ -750,10 +750,10 @@ pub struct KrakenAssets {
 
 // unfortunately, I could never get this to serde deserialize magic, so we use the serde_json elsewhere, and 
 // build a normal struct
-pub struct KrakenTrade<'a> {
+pub struct KafkaKrakenTrade<'a> {
     price: f64,
     quantity: f64,
-    unix_epoch_timestamp: f64,
+    trade_date: &'a str,
     tx_type: &'a str,
     order_type: &'a str,
     some_other_thing: Option<&'a str>
