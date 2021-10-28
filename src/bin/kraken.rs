@@ -211,16 +211,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "all-asset-pairs" => {
 
-            let broker = "localhost:9092";
-            let topic = "kraken-markets";
-
-            let mut producer = Producer::from_hosts(vec![broker.to_owned()])
-                .with_ack_timeout(Duration::from_secs(1))
-                .with_required_acks(RequiredAcks::One)
-                .create()?;
-
             for item in get_asset_pairs().await.unwrap() {
-
                 println!("{}", item);
             }
 
@@ -235,15 +226,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "trades" => {
 
-            let broker = "localhost:9092";
-            let topic = "kraken-markets";
-
-            let mut producer = Producer::from_hosts(vec![broker.to_owned()])
-                .with_ack_timeout(Duration::from_secs(1))
-                .with_required_acks(RequiredAcks::One)
-                .create()?;
-
-            let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(&item)).collect();
+            let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(item)).collect();
             let _rdvec = join_all(dcol).await;
 
         },
