@@ -89,7 +89,7 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 
 // I could not get this to parse using serde the usual way - see model KrakenTrade
 // so different than normal reqwest map to struct
-async fn process_trades<'a>(item: &'a KrakenAssetPair) -> Result<usize, Box<dyn Error>> {
+async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> {
 
     let altname = &item.altname;
     let recreated_name = format!("{}{}", item.base, item.quote);
