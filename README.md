@@ -32,13 +32,19 @@ note that I cloned from git, did the install, and now, boot reboot, it always se
 https://superset.apache.org/docs/installation/installing-superset-using-docker-compose
 
 
+### start mongo
+sudo systemctl start mongod
+
 ### start druid - best on another machine
 ./bin/start-micro-quickstart 
 
+### start kafka - best on another machine
 ./bin/zookeeper-server-start.sh config/zookeeper.properties
 
 ./bin/kafka-server-start.sh config/server.properties
 
+
+## Stuff to do with Kafka
 
 ./bin/kafka-topics.sh --create --topic coinmetrics-markets --partitions 10 --replication-factor 1 --bootstrap-server localhost:9092
 
@@ -66,6 +72,12 @@ https://superset.apache.org/docs/installation/installing-superset-using-docker-c
 
 
 
+## Running DYDX - loop for quotes
+RUST_LOG=DEBUG cargo run --bin dydx all-markets
+
+
+
+### Misc
 
 
 sudo apt-get install pkg-config libssl-dev

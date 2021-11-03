@@ -4,7 +4,7 @@ use slurper::*;
 use log::{info,debug,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade, TLDYDXMarket};
+use self::models::{SourceThingLastUpdate,AssetPair,KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade, TLDYDXMarket};
 use chrono::{DateTime,NaiveDateTime,Utc,SecondsFormat};
 use time::Duration as NormalDuration;
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
@@ -89,7 +89,9 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 
 // I could not get this to parse using serde the usual way - see model KrakenTrade
 // so different than normal reqwest map to struct
-async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> {
+async fn process_trades(item: KrakenAssetPair) -> Result<i64, Box<dyn Error>> {
+
+    let mut max_market_date_hm = HashMap::new();
 
     let altname = &item.altname;
     let recreated_name = format!("{}{}", item.base, item.quote);
@@ -98,10 +100,26 @@ async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> 
     let broker = "localhost:9092";
     let topic = "kraken-markets";
 
+    let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    let database = client.database(THE_DATABASE);
+    let collection = database.collection::<SourceThingLastUpdate>(THE_SOURCE_THING_LAST_UPDATE_COLLECTION);
+
+
     let mut producer = Producer::from_hosts(vec![broker.to_owned()])
         .with_ack_timeout(Duration::from_secs(1))
         .with_required_acks(RequiredAcks::One)
         .create()?;
+
+
+        let asset_pair = AssetPair {
+            altname: altname,
+            base_asset: &item.base,
+            quote_asset: &item.quote,
+        };
+
+    let big_bang = asset_pair.get_last_updated_trade("kraken", &collection).await?; // you could try augment the url to expand based on this distance
+//    let gtedate = big_bang.to_rfc3339_opts(SecondsFormat::Secs, true);
+
 
     let request_url_ts = format!("{}", ts_url1);
     let response_ts = reqwest::get(&request_url_ts).await?;
@@ -131,6 +149,8 @@ async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> 
     match trades_array {
         Some(trades) => {
 
+            let mut dropped_trades: i64 = 0; 
+
             for trade in trades {
                 debug!("{}", trade);
 
@@ -159,33 +179,52 @@ async fn process_trades(item: KrakenAssetPair) -> Result<usize, Box<dyn Error>> 
                 let trade_date_str = trade_date.to_rfc3339_opts(SecondsFormat::Secs, true);
                 debug!("{} {} {} {}", unix_epoch, unix_epoch_as_int, trade_date, trade_date_str);
 
-                let new_kafka_kraken_trade = KafkaKrakenTrade {
-                    asset_pair: &item.altname,
-                    price: trade[0].as_str().unwrap().parse::<f64>().unwrap(),
-                    quantity: trade[1].as_str().unwrap().parse::<f64>().unwrap(),
-                    trade_date: &trade_date_str, 
-                    tx_type: tx_type,
-                    order_type: order_type,
-                    some_other_thing: some_other_thing
-                };
+                if trade_date > big_bang { // this is redundant I think to the above gtedate
 
-                println!("{}", new_kafka_kraken_trade);
+                    let new_kafka_kraken_trade = KafkaKrakenTrade {
+                        asset_pair: &item.altname,
+                        price: trade[0].as_str().unwrap().parse::<f64>().unwrap(),
+                        quantity: trade[1].as_str().unwrap().parse::<f64>().unwrap(),
+                        trade_date: &trade_date_str, 
+                        tx_type: tx_type,
+                        order_type: order_type,
+                        some_other_thing: some_other_thing
+                    };
 
-                let data = serde_json::to_string(&new_kafka_kraken_trade).expect("json serialization failed");
-                let data_as_bytes = data.as_bytes();
+                    println!("{}", new_kafka_kraken_trade);
 
-                producer.send(&Record {
-                    topic,
-                    partition: -1,
-                    key: (),
-                    value: data_as_bytes,
-                })?;
+                    let data = serde_json::to_string(&new_kafka_kraken_trade).expect("json serialization failed");
+                    let data_as_bytes = data.as_bytes();
 
+                    producer.send(&Record {
+                        topic,
+                        partition: -1,
+                        key: (),
+                        value: data_as_bytes,
+                    })?;
+                   max_market_date_hm.entry(altname.clone()).or_insert(trade_date.clone());
+
+                } else {
+                    dropped_trades -= 1;
+                }
 
             };
 
-            Ok(trades.len())
+            for (k,v) in max_market_date_hm {
+                let trade_date = &v;
+                let new_cm = SourceThingLastUpdate {
+                    last_known_trade_date: trade_date.with_timezone(&Utc),
+                    source: "kraken".to_string(),
+                    thing: k,
+                    thing_desription: "asset pair".to_string()
+                };
+                println!("{}", new_cm);
+                let _result = collection.insert_one(new_cm, None).await?;                                    
+            }
 
+
+            debug!("Processed {} trades, though we dropped {} trades, for a total send to kafka of {} trades.", trades.len(), dropped_trades, trades.len() as i64 - dropped_trades);
+            Ok(trades.len() as i64 - dropped_trades)
 
 
         },

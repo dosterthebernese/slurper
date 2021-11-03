@@ -1,4 +1,5 @@
 pub mod models;
+pub mod dydx_models;
 
 use self::models::{TimeRange};
 
@@ -22,7 +23,7 @@ use rand_isaac::Isaac64Rng;
 
 pub const LOCAL_MONGO: &str = "mongodb://localhost:27017";
 pub const THE_DATABASE: &str = "tradellama";
-pub const THE_COINMETRICS_COLLECTION: &str = "coinmetrics";
+pub const THE_SOURCE_THING_LAST_UPDATE_COLLECTION: &str = "sourcethinglastupdate";
 pub const THE_CRYPTO_TRADES_COLLECTION: &str = "crypto_trades";
 
 

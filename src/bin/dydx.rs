@@ -5,22 +5,21 @@ use slurper::*;
 use log::{info,debug};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
-use chrono::{Utc,SecondsFormat};
-use time::Duration as NormalDuration;
+use self::dydx_models::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
+use self::models::{ClusterBomb};
+use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
+use std::collections::HashMap;
 
 //use futures::stream::TryStreamExt;
-use mongodb::{Client};
-use mongodb::{bson::doc};
+//use mongodb::{Client};
+//use mongodb::{bson::doc};
 //use mongodb::options::{FindOptions};
-
-use std::collections::HashMap;
 
 use std::time::Duration;
 
-use kafka::error::Error as KafkaError;
+//use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
 use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
@@ -33,20 +32,9 @@ use clap::App;
 extern crate serde;
 extern crate base64;
 
-use hex::encode as hex_encode;
-use hmac::{Hmac, Mac, NewMac};
-use sha2::Sha256;
 
-
-use serde::{Deserialize, Serialize};
-
-
-const LOOKBACK_OPEN_INTEREST: i64 = 100000000; // 1666 minutes or 27 ish hours
-
-// i know bad but will change, only works on my IP, and there's 20 bucks in the account
-// const API_TOKEN: &str = "89124f02-5e64-436a-bb3c-a5f4d720664d";
-// const API_SECRET: &str = "9B1Yl3NZV0DJS7Q3xJ9LRgfJEFwwdhST0Ihh0DBjePo5Y2I1MjNmZS1hOTkzLTQzNjMtODQ3MS03ZDY0N2M1ZTZmOTk";
-
+extern crate csv;
+use csv::Writer;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
@@ -62,7 +50,7 @@ async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
     let payload: DYDXMarkets = response.json().await?;
     debug!("and {:?}", payload);
 
-    for (k,v) in payload.markets {
+    for (_,v) in payload.markets {
         debug!("{:?}",v);
         rvec.push(v);                    
     }
@@ -96,10 +84,13 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "beta-consumer" => {
 
+            let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
+
+
+
             let broker = "localhost:9092";
             let brokers = vec![broker.to_owned()];
             let topic = "dydx-markets";
-
 
             let mut con = Consumer::from_hosts(brokers)
                 .with_topic(topic.to_string())
@@ -108,19 +99,40 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 .with_offset_storage(GroupOffsetStorage::Kafka)
                 .create()?;
 
-            let mut v_spread = Vec::new();
-            let mut v_index = Vec::new();
-            // let mut v_for_km = Vec::new();
+            let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+
+            let mut cnt: i64 = 0;
+            let mut min_quote_date = Utc::now();
+            let mut max_quote_date = Utc::now();
 
             loop {
                 let mss = con.poll()?;
                 if mss.is_empty() {
+                    info!("Processed {} messages for range {} to {} which is {} minutes.", cnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
+                    for (key,value) in market_vectors {
+                        info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+                        let km_for_v_duo = do_duo_kmeans(&value);                    
+                        debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
+                        for (idx, kg) in km_for_v_duo.iter().enumerate() {
+                            debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
+                            let new_cluster_bomb = ClusterBomb {
+                                market: &key,
+                                min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                                max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                                minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                                float_one: value[idx*2],
+                                float_two: value[(idx*2)+1],
+                                group: *kg
+                            };
+                            println!("{}", new_cluster_bomb);
+                            wtr.serialize(new_cluster_bomb)?;
+
+                        }
+                    }
                     println!("No messages available right now.");
-
-
+                    wtr.flush()?;
                     return Ok(());
                 }
-
 
                 for ms in mss.iter() {
                     for m in ms.messages() {
@@ -131,8 +143,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         let cb =  str::from_utf8(&buf).unwrap();
                         let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
                         println!("{}", des_tldm);
-                        v_spread.push(des_tldm.tl_derived_index_oracle_spread);
-                        v_index.push(des_tldm.index_price);
+                        cnt += 1;
+
+                        let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+                        
+                        if min_quote_date > quote_date {
+                            min_quote_date = quote_date;
+                        }
+                        if max_quote_date < quote_date {
+                            max_quote_date = quote_date;
+                        }
+
+                        market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);                        
+                        market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
                     }
                     let _ = con.consume_messageset(ms);
                 }

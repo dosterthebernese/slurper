@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use log::{debug,info,warn,error};
 use std::error::Error;
-use self::models::{CoinMetrics,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades,TimeRange, MarketSummary, RangeBoundMarketSummary};
+use self::models::{SourceThingLastUpdate,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades,TimeRange, MarketSummary, RangeBoundMarketSummary};
 use chrono::{DateTime,Utc};
 
 use chrono::{SecondsFormat};
@@ -100,7 +100,7 @@ async fn process_market<'a>(m: String) -> Result<(),Box<dyn Error>> {
 
     let client = Client::with_uri_str(LOCAL_MONGO).await?;
     let database = client.database(THE_DATABASE);
-    let collection = database.collection::<CoinMetrics>(THE_COINMETRICS_COLLECTION);
+    let collection = database.collection::<SourceThingLastUpdate>(THE_SOURCE_THING_LAST_UPDATE_COLLECTION);
 
     let broker = "localhost:9092";
     let topic = "coinmetrics-markets";
@@ -155,9 +155,11 @@ async fn process_market<'a>(m: String) -> Result<(),Box<dyn Error>> {
 
     for (k,v) in max_market_date_hm {
         let trade_date = DateTime::parse_from_rfc3339(&v).unwrap();
-        let new_cm = CoinMetrics {
+        let new_cm = SourceThingLastUpdate {
             last_known_trade_date: trade_date.with_timezone(&Utc),
-            market: k,
+            source: "coinmetrics".to_string(),
+            thing: k,
+            thing_description: "market".to_string()
         };
         println!("{}", new_cm);
         let _result = collection.insert_one(new_cm, None).await?;                                    
@@ -319,7 +321,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
             let client = Client::with_uri_str(LOCAL_MONGO).await?;
             let database = client.database(THE_DATABASE);
-            let collection = database.collection::<CoinMetrics>(THE_COINMETRICS_COLLECTION);
+            let collection = database.collection::<SourceThingLastUpdate>(THE_SOURCE_THING_LAST_UPDATE_COLLECTION);
 
             let all_markets = get_hotlist().await?;
             for m in all_markets {

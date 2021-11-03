@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use serde::{Serialize,Deserialize};
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
-use chrono::{DateTime,Utc,SecondsFormat};
+use chrono::{DateTime,Utc};
 use chrono::format::ParseError;
 
 use mongodb::{Collection};
@@ -20,6 +20,65 @@ use average::{WeightedMean,Min,Max};
 
 use std::fmt; // Import `fmt`
 use std::fmt::Error as NormalError;
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClusterBomb<'a> {
+    pub market: &'a str,
+    pub min_date: &'a str,
+    pub max_date: &'a str,
+    pub minutes: i64,
+    pub float_one: f64,
+    pub float_two: f64,
+    pub group: i32
+}
+
+
+
+impl fmt::Display for ClusterBomb<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>2}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.group)
+    }   
+}
+ 
+
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AssetPair<'a> {
+    pub altname: &'a str,
+    pub base_asset: &'a str,
+    pub quote_asset: &'a str,
+}
+
+impl AssetPair<'_> {
+
+    pub async fn get_last_updated_trade<'a>(self: &Self, source: &'a str, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, Error> {
+
+        let filter = doc! {"thing": &self.altname, "source": source, "thing": "asset pair"};
+        let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+
+        let mut big_bang = chrono::offset::Utc::now();
+        big_bang = big_bang - Duration::minutes(60);
+
+        while let Some(cm) = cursor.try_next().await? {
+            big_bang = cm.last_known_trade_date;
+        }
+        Ok(big_bang)
+
+    }
+
+
+}
+
+impl fmt::Display for AssetPair<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:<10}", self.altname, self.base_asset, self.quote_asset)
+    }
+}
+
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,9 +107,9 @@ impl CryptoMarket<'_> {
         } 
     }
 
-    pub async fn get_last_updated_trade(self: &Self, collection: &Collection<CoinMetrics>) -> Result<DateTime<Utc>, Error> {
+    pub async fn get_last_updated_trade(self: &Self, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, Error> {
 
-        let filter = doc! {"market": &self.market};
+        let filter = doc! {"thing": &self.market, "source": "coinmetrics", "thing": "market"};
         let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
         let mut cursor = collection.find(filter, find_options).await?;
 
@@ -71,7 +130,8 @@ impl CryptoMarket<'_> {
         let mut cursor = collection.find(filter, find_options).await?;
 
         let mut big_bang = chrono::offset::Utc::now();
-        big_bang = big_bang - Duration::minutes(60);
+        // we go back a lot farther for the trade stuff cause there's no limit
+        big_bang = big_bang - Duration::minutes(600000);
 
         while let Some(cm) = cursor.try_next().await? {
             big_bang = cm.trade_date;
@@ -218,16 +278,18 @@ impl Trades<KafkaCryptoTrade<'_>> {
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CoinMetrics {
+pub struct SourceThingLastUpdate {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub last_known_trade_date: DateTime<Utc>,
-    pub market: String,
+    pub source: String,
+    pub thing: String,
+    pub thing_description: String
 }
 
-impl fmt::Display for CoinMetrics {
+impl fmt::Display for SourceThingLastUpdate {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<35} {:<30}", 
-            self.last_known_trade_date, self.market)
+        write!(f, "{:<35} {:<30} {:<30} {:<30}", 
+            self.last_known_trade_date, self.source, self.thing, self.thing_description)
     }
 }
 
@@ -593,105 +655,105 @@ pub struct PhemexDataWrapperMD {
 
 
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TLDYDXMarket<'a> {
-    pub snapshot_date: &'a str,
-    pub market: &'a str,
-    pub status: &'a str,
-    pub base_asset: &'a str,
-    pub quote_asset: &'a str,
-    pub step_size: f64,
-    pub tick_size: f64,
-    pub index_price: f64,
-    pub oracle_price: f64,
-    pub tl_derived_index_oracle_spread: f64,
-    pub price_change_24h: f64,
-    pub next_funding_rate: f64,
-    pub next_funding_at: &'a str,
-    pub min_order_size: f64,
-    pub instrument_type: &'a str,
-    pub initial_margin_fraction: f64,
-    pub maintenance_margin_fraction: f64,
-    pub baseline_position_size: f64,
-    pub incremental_position_size: f64,
-    pub incremental_initial_margin_fraction: f64,
-    pub volume_24h: f64,
-    pub trades_24h: f64,
-    pub open_interest: f64,
-    pub max_position_size: f64,
-    pub asset_resolution: f64,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct TLDYDXMarket<'a> {
+//     pub snapshot_date: &'a str,
+//     pub market: &'a str,
+//     pub status: &'a str,
+//     pub base_asset: &'a str,
+//     pub quote_asset: &'a str,
+//     pub step_size: f64,
+//     pub tick_size: f64,
+//     pub index_price: f64,
+//     pub oracle_price: f64,
+//     pub tl_derived_index_oracle_spread: f64,
+//     pub price_change_24h: f64,
+//     pub next_funding_rate: f64,
+//     pub next_funding_at: &'a str,
+//     pub min_order_size: f64,
+//     pub instrument_type: &'a str,
+//     pub initial_margin_fraction: f64,
+//     pub maintenance_margin_fraction: f64,
+//     pub baseline_position_size: f64,
+//     pub incremental_position_size: f64,
+//     pub incremental_initial_margin_fraction: f64,
+//     pub volume_24h: f64,
+//     pub trades_24h: f64,
+//     pub open_interest: f64,
+//     pub max_position_size: f64,
+//     pub asset_resolution: f64,
+// }
 
 
-impl fmt::Display for TLDYDXMarket<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10} {:>10.4} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.snapshot_date, self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread, self.price_change_24h, self.next_funding_rate, self.next_funding_at, self.min_order_size, self.instrument_type, self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
-    }
-}
+// impl fmt::Display for TLDYDXMarket<'_> {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10} {:>10.4} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.snapshot_date, self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread, self.price_change_24h, self.next_funding_rate, self.next_funding_at, self.min_order_size, self.instrument_type, self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
+//     }
+// }
 
 
-#[derive(Deserialize, Debug)]
-pub struct DYDXMarket {
-    pub market: String,
-    pub status: String,
-    #[serde(rename(deserialize = "baseAsset"))]
-    pub base_asset: String,
-    #[serde(rename(deserialize = "quoteAsset"))]
-    pub quote_asset: String,
-    #[serde(rename(deserialize = "stepSize"))]
-    pub step_size: String,
-    #[serde(rename(deserialize = "tickSize"))]
-    pub tick_size: String,
-    #[serde(rename(deserialize = "indexPrice"))]
-    pub index_price: String,
-    #[serde(rename(deserialize = "oraclePrice"))]
-    pub oracle_price: String,
-    #[serde(rename(deserialize = "priceChange24H"))]
-    pub price_change_24h: String,
-    #[serde(rename(deserialize = "nextFundingRate"))]
-    pub next_funding_rate: String,
-    #[serde(rename(deserialize = "nextFundingAt"))]
-    pub next_funding_at: String,
-    #[serde(rename(deserialize = "minOrderSize"))]
-    pub min_order_size: String,
-    #[serde(rename(deserialize = "type"))]
-    pub instrument_type: String,
-    #[serde(rename(deserialize = "initialMarginFraction"))]
-    pub initial_margin_fraction: String,
-    #[serde(rename(deserialize = "maintenanceMarginFraction"))]
-    pub maintenance_margin_fraction: String,
-    #[serde(rename(deserialize = "baselinePositionSize"))]
-    pub baseline_position_size: String,
-    #[serde(rename(deserialize = "incrementalPositionSize"))]
-    pub incremental_position_size: String,
-    #[serde(rename(deserialize = "incrementalInitialMarginFraction"))]
-    pub incremental_initial_margin_fraction: String,
-    #[serde(rename(deserialize = "volume24H"))]
-    pub volume_24h: String,
-    #[serde(rename(deserialize = "trades24H"))]
-    pub trades_24h: String,
-    #[serde(rename(deserialize = "openInterest"))]
-    pub open_interest: String,
-    #[serde(rename(deserialize = "maxPositionSize"))]
-    pub max_position_size: String,
-    #[serde(rename(deserialize = "assetResolution"))]
-    pub asset_resolution: String,
+// #[derive(Deserialize, Debug)]
+// pub struct DYDXMarket {
+//     pub market: String,
+//     pub status: String,
+//     #[serde(rename(deserialize = "baseAsset"))]
+//     pub base_asset: String,
+//     #[serde(rename(deserialize = "quoteAsset"))]
+//     pub quote_asset: String,
+//     #[serde(rename(deserialize = "stepSize"))]
+//     pub step_size: String,
+//     #[serde(rename(deserialize = "tickSize"))]
+//     pub tick_size: String,
+//     #[serde(rename(deserialize = "indexPrice"))]
+//     pub index_price: String,
+//     #[serde(rename(deserialize = "oraclePrice"))]
+//     pub oracle_price: String,
+//     #[serde(rename(deserialize = "priceChange24H"))]
+//     pub price_change_24h: String,
+//     #[serde(rename(deserialize = "nextFundingRate"))]
+//     pub next_funding_rate: String,
+//     #[serde(rename(deserialize = "nextFundingAt"))]
+//     pub next_funding_at: String,
+//     #[serde(rename(deserialize = "minOrderSize"))]
+//     pub min_order_size: String,
+//     #[serde(rename(deserialize = "type"))]
+//     pub instrument_type: String,
+//     #[serde(rename(deserialize = "initialMarginFraction"))]
+//     pub initial_margin_fraction: String,
+//     #[serde(rename(deserialize = "maintenanceMarginFraction"))]
+//     pub maintenance_margin_fraction: String,
+//     #[serde(rename(deserialize = "baselinePositionSize"))]
+//     pub baseline_position_size: String,
+//     #[serde(rename(deserialize = "incrementalPositionSize"))]
+//     pub incremental_position_size: String,
+//     #[serde(rename(deserialize = "incrementalInitialMarginFraction"))]
+//     pub incremental_initial_margin_fraction: String,
+//     #[serde(rename(deserialize = "volume24H"))]
+//     pub volume_24h: String,
+//     #[serde(rename(deserialize = "trades24H"))]
+//     pub trades_24h: String,
+//     #[serde(rename(deserialize = "openInterest"))]
+//     pub open_interest: String,
+//     #[serde(rename(deserialize = "maxPositionSize"))]
+//     pub max_position_size: String,
+//     #[serde(rename(deserialize = "assetResolution"))]
+//     pub asset_resolution: String,
 
-}
-
-
-impl fmt::Display for DYDXMarket {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.price_change_24h, self.next_funding_rate, self.next_funding_at, self.min_order_size, self.instrument_type, self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
-    }
-}
+// }
 
 
-#[derive(Deserialize, Debug)]
-pub struct DYDXMarkets {
-    #[serde(rename(deserialize = "markets"))]
-    pub markets: HashMap<String,DYDXMarket>
-}
+// impl fmt::Display for DYDXMarket {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}", self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.price_change_24h, self.next_funding_rate, self.next_funding_at, self.min_order_size, self.instrument_type, self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
+//     }
+// }
+
+
+// #[derive(Deserialize, Debug)]
+// pub struct DYDXMarkets {
+//     #[serde(rename(deserialize = "markets"))]
+//     pub markets: HashMap<String,DYDXMarket>
+// }
 
 
 
