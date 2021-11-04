@@ -181,6 +181,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             info!("this process should be daemonized");
             let mut interval = TokioTime::interval(TokioDuration::from_millis(1000));
 
+            // you could fix this size 
+            let mut trailing_prices: HashMap<String, Vec<f64>> = HashMap::new(); 
+
             let mut tmpcnt = 0;
             loop {
                 if tmpcnt == 1000000 {
@@ -189,11 +192,26 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     tmpcnt+=1;
                 }
 
+
+
+
                 for item in get_markets().await.unwrap() {
 
                     let index_price = item.index_price.parse::<f64>().unwrap();
                     let oracle_price = item.oracle_price.parse::<f64>().unwrap();
+
+                    trailing_prices.entry(item.market.to_string()).or_insert(Vec::new()).push(index_price);                        
+
                     let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
+
+                    let tl_derived_price_change_5s = get_interval_performance(index_price,5,&item.market,&trailing_prices);
+                    let tl_derived_price_change_10s = get_interval_performance(index_price,10,&item.market,&trailing_prices);
+                    let tl_derived_price_change_30s = get_interval_performance(index_price,30,&item.market,&trailing_prices);
+                    let tl_derived_price_change_1m = get_interval_performance(index_price,60,&item.market,&trailing_prices);
+                    let tl_derived_price_change_5m = get_interval_performance(index_price,300,&item.market,&trailing_prices);
+                    let tl_derived_price_change_10m = get_interval_performance(index_price,600,&item.market,&trailing_prices);
+
+
                     let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
                     let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
                     let min_order_size = item.min_order_size.parse::<f64>().unwrap();
@@ -221,6 +239,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         oracle_price: oracle_price,
                         tl_derived_index_oracle_spread: tl_derived_index_oracle_spread,
                         price_change_24h: price_change_24h,
+                        tl_derived_price_change_5s: tl_derived_price_change_5s,
+                        tl_derived_price_change_10s: tl_derived_price_change_10s,
+                        tl_derived_price_change_30s: tl_derived_price_change_30s,
+                        tl_derived_price_change_1m: tl_derived_price_change_1m,
+                        tl_derived_price_change_5m: tl_derived_price_change_5m,
+                        tl_derived_price_change_10m: tl_derived_price_change_10m,
+                        tl_derived_price_vol_1m: None,
+                        tl_derived_price_vol_5m: None,
+                        tl_derived_price_vol_10m: None,
                         next_funding_rate: next_funding_rate,
                         next_funding_at: &item.next_funding_at,
                         min_order_size: min_order_size,

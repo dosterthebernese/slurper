@@ -19,6 +19,15 @@ pub struct TLDYDXMarket<'a> {
     pub oracle_price: f64,
     pub tl_derived_index_oracle_spread: f64,
     pub price_change_24h: f64,
+    pub tl_derived_price_change_5s: Option<f64>,
+    pub tl_derived_price_change_10s: Option<f64>,
+    pub tl_derived_price_change_30s: Option<f64>,
+    pub tl_derived_price_change_1m: Option<f64>,
+    pub tl_derived_price_change_5m: Option<f64>,
+    pub tl_derived_price_change_10m: Option<f64>,
+    pub tl_derived_price_vol_1m: Option<f64>,
+    pub tl_derived_price_vol_5m: Option<f64>,
+    pub tl_derived_price_vol_10m: Option<f64>,
     pub next_funding_rate: f64,
     pub next_funding_at: &'a str,
     pub min_order_size: f64,
@@ -38,7 +47,26 @@ pub struct TLDYDXMarket<'a> {
 
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10} {:>10.4} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", self.snapshot_date, self.market, self.status, self.base_asset, self.quote_asset, self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread, self.price_change_24h, self.next_funding_rate, self.next_funding_at, self.min_order_size, self.instrument_type, self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
+        write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} 
+            {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} 
+            {:>10.4} 
+            {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} 
+            {:>10.4} {:>10.4} {:>10.4}  
+            {:>10.4}
+            {:>10} 
+            {:>10.4} 
+            {:>10} 
+            {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", 
+            self.snapshot_date, self.market, self.status, self.base_asset, self.quote_asset, 
+            self.step_size, self.tick_size, self.index_price, self.oracle_price, self.tl_derived_index_oracle_spread, 
+            self.price_change_24h, 
+            self.tl_derived_price_change_5s.unwrap_or(0.),self.tl_derived_price_change_10s.unwrap_or(0.),self.tl_derived_price_change_30s.unwrap_or(0.),self.tl_derived_price_change_1m.unwrap_or(0.),self.tl_derived_price_change_5m.unwrap_or(0.),self.tl_derived_price_change_10m.unwrap_or(0.),
+            self.tl_derived_price_vol_1m.unwrap_or(0.),self.tl_derived_price_vol_5m.unwrap_or(0.),self.tl_derived_price_vol_10m.unwrap_or(0.),            
+            self.next_funding_rate, 
+            self.next_funding_at, 
+            self.min_order_size, 
+            self.instrument_type, 
+            self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
     }
 }
 

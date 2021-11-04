@@ -3,6 +3,8 @@ pub mod dydx_models;
 
 use self::models::{TimeRange};
 
+use std::collections::HashMap;
+
 use log::{debug,error};
 use std::error::Error;
 use std::fmt;
@@ -406,6 +408,27 @@ pub fn std_deviation(data: &[f64]) -> Option<f64> {
         },
         _ => None
     }
+}
+
+pub fn get_interval_performance<'a>(current_price: f64, lookback: usize, market: &'a str, hm: &HashMap<String,Vec<f64>>) -> Option<f64> {
+
+    if hm[market].len() >= (lookback)  {
+        let retro_price_loc = hm[market].len() - lookback;
+        match hm.get(market) {
+            Some(old_prices) => {
+                let retro_price = old_prices[retro_price_loc];
+                let delta = (current_price - retro_price) / retro_price;
+                debug!("retro spot is: {} giving us base of {} to measure against current {} for a delta of {}", retro_price_loc, retro_price, current_price, delta);
+                Some(delta)
+            },
+            _ => None
+        }
+
+    } else {
+        None
+    }
+
+
 }
 
 
