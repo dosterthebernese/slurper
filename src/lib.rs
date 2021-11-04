@@ -428,8 +428,31 @@ pub fn get_interval_performance<'a>(current_price: f64, lookback: usize, market:
         None
     }
 
+}
+
+
+
+pub fn get_interval_volatility<'a>(lookback: usize, market: &'a str, hm: &HashMap<String,Vec<f64>>) -> Option<f64> {
+
+    if hm[market].len() >= (lookback)  {
+        let retro_price_loc = hm[market].len() - lookback;
+        match hm.get(market) {
+            Some(old_prices) => {
+                let hcol: Vec<_> = (retro_price_loc..hm[market].len()).map(|n| old_prices[n]).collect();
+                debug!("{:?} {:?} {:?} {:?}", hcol, old_prices, hcol.len(), old_prices.len());
+                std_deviation(&hcol)
+            },
+            _ => None
+        }
+
+    } else {
+        None
+    }
+
 
 }
+
+
 
 
 pub fn delta_walk_integers<'a>(v: &Vec<i64>) -> Vec<f64> {

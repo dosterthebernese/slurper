@@ -154,8 +154,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                             max_quote_date = quote_date;
                         }
 
-                        market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);                        
-                        market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+                        if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);                        
+                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+                        }
                     }
                     let _ = con.consume_messageset(ms);
                 }
@@ -210,7 +212,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     let tl_derived_price_change_1m = get_interval_performance(index_price,60,&item.market,&trailing_prices);
                     let tl_derived_price_change_5m = get_interval_performance(index_price,300,&item.market,&trailing_prices);
                     let tl_derived_price_change_10m = get_interval_performance(index_price,600,&item.market,&trailing_prices);
-
+                    let tl_derived_price_vol_1m = get_interval_volatility(60,&item.market,&trailing_prices);
+                    let tl_derived_price_vol_5m = get_interval_volatility(300,&item.market,&trailing_prices);
+                    let tl_derived_price_vol_10m = get_interval_volatility(600,&item.market,&trailing_prices);
 
                     let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
                     let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
@@ -245,9 +249,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         tl_derived_price_change_1m: tl_derived_price_change_1m,
                         tl_derived_price_change_5m: tl_derived_price_change_5m,
                         tl_derived_price_change_10m: tl_derived_price_change_10m,
-                        tl_derived_price_vol_1m: None,
-                        tl_derived_price_vol_5m: None,
-                        tl_derived_price_vol_10m: None,
+                        tl_derived_price_vol_1m: tl_derived_price_vol_1m,
+                        tl_derived_price_vol_5m: tl_derived_price_vol_5m,
+                        tl_derived_price_vol_10m: tl_derived_price_vol_10m,
                         next_funding_rate: next_funding_rate,
                         next_funding_at: &item.next_funding_at,
                         min_order_size: min_order_size,
