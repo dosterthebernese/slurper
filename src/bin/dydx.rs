@@ -2,7 +2,7 @@
 use slurper::*;
 
 
-use log::{info,debug};
+use log::{info,debug,warn};
 use std::error::Error;
 //use std::convert::TryFrom;
 use self::dydx_models::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
@@ -109,6 +109,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 let mss = con.poll()?;
                 if mss.is_empty() {
                     info!("Processed {} messages for range {} to {} which is {} minutes.", cnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
+                    if market_vectors.is_empty() {
+                        warn!("Not yet 10 mins");
+                    }                    
                     for (key,value) in market_vectors {
                         info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
                         let km_for_v_duo = do_duo_kmeans(&value);                    
@@ -155,8 +158,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);                        
-                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                            let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                            let mn = des_tldm.tl_derived_price_vol_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+//                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                         }
                     }
                     let _ = con.consume_messageset(ms);
@@ -219,6 +225,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     let tl_derived_price_vol_1m = get_interval_volatility(60,&item.market,&trailing_prices);
                     let tl_derived_price_vol_5m = get_interval_volatility(300,&item.market,&trailing_prices);
                     let tl_derived_price_vol_10m = get_interval_volatility(600,&item.market,&trailing_prices);
+                    let tl_derived_price_mean_1m = get_interval_mean(60,&item.market,&trailing_prices); // not weighted
+                    let tl_derived_price_mean_5m = get_interval_mean(300,&item.market,&trailing_prices); // not weighted
+                    let tl_derived_price_mean_10m = get_interval_mean(600,&item.market,&trailing_prices); // not weighted
 
 
                     let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
@@ -257,6 +266,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         tl_derived_price_vol_1m: tl_derived_price_vol_1m,
                         tl_derived_price_vol_5m: tl_derived_price_vol_5m,
                         tl_derived_price_vol_10m: tl_derived_price_vol_10m,
+                        tl_derived_price_mean_1m: tl_derived_price_mean_1m,
+                        tl_derived_price_mean_5m: tl_derived_price_mean_5m,
+                        tl_derived_price_mean_10m: tl_derived_price_mean_10m,
                         next_funding_rate: next_funding_rate,
                         next_funding_at: &item.next_funding_at,
                         min_order_size: min_order_size,

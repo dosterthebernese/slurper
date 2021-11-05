@@ -28,6 +28,9 @@ pub struct TLDYDXMarket<'a> {
     pub tl_derived_price_vol_1m: Option<f64>,
     pub tl_derived_price_vol_5m: Option<f64>,
     pub tl_derived_price_vol_10m: Option<f64>,
+    pub tl_derived_price_mean_1m: Option<f64>,
+    pub tl_derived_price_mean_5m: Option<f64>,
+    pub tl_derived_price_mean_10m: Option<f64>,
     pub next_funding_rate: f64,
     pub next_funding_at: &'a str,
     pub min_order_size: f64,
@@ -47,10 +50,11 @@ pub struct TLDYDXMarket<'a> {
 
 impl fmt::Display for TLDYDXMarket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10} {:>10} {:>10} 
+        write!(f, "\n{:<10} {:<10} {:<10} {:>10} {:>10} 
             {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} 
             {:>10.4} 
             {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} 
+            {:>10.4} {:>10.4} {:>10.4}  
             {:>10.4} {:>10.4} {:>10.4}  
             {:>10.4}
             {:>10} 
@@ -62,6 +66,7 @@ impl fmt::Display for TLDYDXMarket<'_> {
             self.price_change_24h, 
             self.tl_derived_price_change_5s.unwrap_or(0.),self.tl_derived_price_change_10s.unwrap_or(0.),self.tl_derived_price_change_30s.unwrap_or(0.),self.tl_derived_price_change_1m.unwrap_or(0.),self.tl_derived_price_change_5m.unwrap_or(0.),self.tl_derived_price_change_10m.unwrap_or(0.),
             self.tl_derived_price_vol_1m.unwrap_or(0.),self.tl_derived_price_vol_5m.unwrap_or(0.),self.tl_derived_price_vol_10m.unwrap_or(0.),            
+            self.tl_derived_price_mean_1m.unwrap_or(0.),self.tl_derived_price_mean_5m.unwrap_or(0.),self.tl_derived_price_mean_10m.unwrap_or(0.),            
             self.next_funding_rate, 
             self.next_funding_at, 
             self.min_order_size, 

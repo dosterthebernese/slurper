@@ -409,6 +409,26 @@ pub fn get_interval_volatility<'a>(lookback: usize, market: &'a str, hm: &HashMa
 
 }
 
+// not weighted
+pub fn get_interval_mean<'a>(lookback: usize, market: &'a str, hm: &HashMap<String,Vec<f64>>) -> Option<f64> {
+
+    if hm[market].len() >= (lookback)  {
+        let retro_price_loc = hm[market].len() - lookback;
+        match hm.get(market) {
+            Some(old_prices) => {
+                let hcol: Vec<_> = (retro_price_loc..hm[market].len()).map(|n| old_prices[n]).collect();
+                debug!("{:?} {:?} {:?} {:?}", hcol, old_prices, hcol.len(), old_prices.len());
+                mean(&hcol)
+            },
+            _ => None
+        }
+
+    } else {
+        None
+    }
+
+
+}
 
 
 
