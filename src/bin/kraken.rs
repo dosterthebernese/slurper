@@ -4,24 +4,20 @@ use slurper::*;
 use log::{info,debug,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{SourceThingLastUpdate,AssetPair,KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade, TLDYDXMarket};
+use self::models::{SourceThingLastUpdate,AssetPair,KrakenAssetPairs,KrakenAssetPair,KrakenAssets, KrakenAsset, KafkaKrakenTrade};
 use chrono::{DateTime,NaiveDateTime,Utc,SecondsFormat};
-use time::Duration as NormalDuration;
-use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
-use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
 
 //use futures::stream::TryStreamExt;
 use mongodb::{Client};
-use mongodb::{bson::doc};
+//use mongodb::{bson::doc};
 //use mongodb::options::{FindOptions};
+
 
 use std::collections::HashMap;
 
 use std::time::Duration;
 
-use kafka::error::Error as KafkaError;
 use kafka::producer::{Producer, Record, RequiredAcks};
-use kafka::consumer::{Consumer, FetchOffset, GroupOffsetStorage};
 
 use futures::future::join_all;
 
@@ -35,15 +31,8 @@ use clap::App;
 extern crate serde;
 extern crate base64;
 
-use hex::encode as hex_encode;
-use hmac::{Hmac, Mac, NewMac};
-use sha2::Sha256;
 
-
-use serde::{Deserialize, Serialize};
 use serde_json::{Value};
-
-const LOOKBACK_OPEN_INTEREST: i64 = 100000000; // 1666 minutes or 27 ish hours
 
 // i know bad but will change, only works on my IP, and there's 20 bucks in the account
 // const API_TOKEN: &str = "89124f02-5e64-436a-bb3c-a5f4d720664d";
@@ -64,7 +53,7 @@ async fn get_asset_pairs() -> Result<Vec<KrakenAssetPair>, Box<dyn Error>> {
 
     let payload: KrakenAssetPairs = response.json().await?;
 
-    for (k,v) in payload.asset_pairs {
+    for (_k,v) in payload.asset_pairs {
         rvec.push(v);                    
     }
 
@@ -80,7 +69,7 @@ async fn get_assets() -> Result<Vec<KrakenAsset>, Box<dyn Error>> {
 
     let payload: KrakenAssets = response.json().await?;
 
-    for (k,v) in payload.assets {
+    for (_k,v) in payload.assets {
         rvec.push(v);                    
     }
 
@@ -216,7 +205,7 @@ async fn process_trades(item: KrakenAssetPair) -> Result<i64, Box<dyn Error>> {
                     last_known_trade_date: trade_date.with_timezone(&Utc),
                     source: "kraken".to_string(),
                     thing: k,
-                    thing_desription: "asset pair".to_string()
+                    thing_description: "asset pair".to_string()
                 };
                 println!("{}", new_cm);
                 let _result = collection.insert_one(new_cm, None).await?;                                    
@@ -293,8 +282,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs};
-//    use std::fs::File;
 
     #[test]
     fn it_works_test_file_exists() {

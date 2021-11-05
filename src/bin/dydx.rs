@@ -201,10 +201,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
                     let index_price = item.index_price.parse::<f64>().unwrap();
                     let oracle_price = item.oracle_price.parse::<f64>().unwrap();
+                    let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
 
                     trailing_prices.entry(item.market.to_string()).or_insert(Vec::new()).push(index_price);                        
-
-                    let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
+                    // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
+                    if trailing_prices[&item.market].len() > 600 {
+                        trailing_prices.get_mut(&item.market).unwrap().remove(0);                    
+                        assert_eq!(trailing_prices[&item.market].len(), 600);
+                    }
 
                     let tl_derived_price_change_5s = get_interval_performance(index_price,5,&item.market,&trailing_prices);
                     let tl_derived_price_change_10s = get_interval_performance(index_price,10,&item.market,&trailing_prices);
@@ -215,6 +219,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     let tl_derived_price_vol_1m = get_interval_volatility(60,&item.market,&trailing_prices);
                     let tl_derived_price_vol_5m = get_interval_volatility(300,&item.market,&trailing_prices);
                     let tl_derived_price_vol_10m = get_interval_volatility(600,&item.market,&trailing_prices);
+
 
                     let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
                     let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
@@ -304,7 +309,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs};
+//    use std::{fs};
 //    use std::fs::File;
 
     #[test]
@@ -316,6 +321,30 @@ mod tests {
     fn it_works_can_open_close_file() {
         assert_eq!(3 + 3, 6);
     }
+
+    #[test]
+    fn trailing_vec_logic() {
+        let mut tapering_vec: Vec<f64> = vec![1.,2.,3.,4.,5.,6.,7.,8.,9.,10.,11.,12.,13.,];
+        assert_eq!(tapering_vec.len(), 13);
+        assert_eq!(4.,tapering_vec[3]);
+        tapering_vec.push(14.);
+        assert_eq!(tapering_vec.len(), 14);
+        assert_eq!(4.,tapering_vec[3]);
+        assert_eq!(1.,tapering_vec[0]);
+        assert_eq!(14.,tapering_vec[13]);
+        tapering_vec.push(77.);
+        assert_eq!(tapering_vec.len(), 15);
+        assert_eq!(77.,tapering_vec[14]);
+        tapering_vec.remove(0);
+        assert_eq!(tapering_vec.len(), 14);
+        assert_eq!(2.,tapering_vec[0]);
+        tapering_vec.remove(0);
+        assert_eq!(tapering_vec.len(), 13);
+        assert_eq!(3.,tapering_vec[0]);
+        assert_eq!(77.,tapering_vec[12]);
+    }
+
+
 
 
 }

@@ -1,22 +1,10 @@
 // this use statement gets you access to the lib file
-use slurper::*;
 use std::fmt; // Import `fmt`
 use num_traits::pow::Pow;
 
 
-use log::{info,debug};
+use log::{debug};
 use std::error::Error;
-//use std::convert::TryFrom;
-use self::models::{AnalysisArtifact,PhemexDataWrapperAccount,PhemexDataWrapperProducts, PhemexProduct, PhemexCurrency,PhemexDataWrapperMD, PhemexMD,TLPhemexMDSnapshot, CryptoLiquidation, Trades};
-use chrono::{DateTime,Utc};
-use time::Duration as NormalDuration;
-use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
-use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
-
-use futures::stream::TryStreamExt;
-use mongodb::{Client};
-use mongodb::{bson::doc};
-use mongodb::options::{FindOptions};
 
 use std::collections::HashMap;
 
@@ -29,14 +17,6 @@ use clap::App;
 extern crate serde;
 extern crate base64;
 
-
-
-use hex::encode as hex_encode;
-use hmac::{Hmac, Mac, NewMac};
-use sha2::Sha256;
-
-
-use serde::{Deserialize, Serialize};
 
 
 struct Stake<'a> {
@@ -176,8 +156,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs};
-//    use std::fs::File;
 
     #[test]
     fn it_works_test_file_exists() {

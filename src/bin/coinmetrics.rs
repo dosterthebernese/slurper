@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use log::{debug,info,warn,error};
 use std::error::Error;
-use self::models::{SourceThingLastUpdate,KafkaCryptoTrade,CryptoMarket,CryptoTrade,Trades,TimeRange, MarketSummary, RangeBoundMarketSummary};
+use self::models::{SourceThingLastUpdate,KafkaCryptoTrade,CryptoMarket,CryptoTrade,TimeRange, MarketSummary, RangeBoundMarketSummary};
 use chrono::{DateTime,Utc};
 
 use chrono::{SecondsFormat};
@@ -15,7 +15,7 @@ use futures::future::join_all;
 use mongodb::{Collection};
 use mongodb::{Client};
 use mongodb::{bson::doc};
-use futures::stream::{self, StreamExt}; // this gets you next in aggregation cursor
+use futures::stream::{StreamExt}; // this gets you next in aggregation cursor
 
 // use futures::stream::TryStreamExt;
 // use mongodb::options::{FindOptions};
@@ -514,7 +514,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs};
+//    use std::{fs};
 //    use std::fs::File;
 
     #[test]

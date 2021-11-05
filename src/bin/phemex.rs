@@ -12,8 +12,8 @@ use tokio::time as TokioTime;  //renamed norm duration so could use this for int
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
 
 //use futures::stream::TryStreamExt;
-use mongodb::{Client};
-use mongodb::{bson::doc};
+// use mongodb::{Client};
+// use mongodb::{bson::doc};
 //use mongodb::options::{FindOptions};
 
 use std::collections::HashMap;
@@ -36,7 +36,7 @@ extern crate base64;
 extern crate dotenv;
 
 use dotenv::dotenv;
-use std::env;
+//use std::env;
 
 use hex::encode as hex_encode;
 use hmac::{Hmac, Mac, NewMac};
@@ -47,8 +47,6 @@ use serde::{Deserialize, Serialize};
 
 // Create alias for HMAC-SHA256
 //type HmacSha256 = Hmac<Sha256>;
-
-const LOOKBACK_OPEN_INTEREST: i64 = 100000000; // 1666 minutes or 27 ish hours
 
 
 const MD_URL: &str = "https://api.phemex.com/md/ticker/24hr";
@@ -436,7 +434,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs};
+//    use std::{fs};
 //    use std::fs::File;
 
     #[test]
