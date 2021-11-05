@@ -56,7 +56,7 @@ pub fn geometric_mean(weights: &HashMap<&str, f64>, pool: &HashMap<&str, f64>) -
 pub async fn main() -> Result<(), Box<dyn Error>> {
 
     env_logger::init(); 
-    let yaml = load_yaml!("../coinmetrics.yml");
+    let yaml = load_yaml!("../cmds.yml");
 
     let matches = App::from_yaml(yaml).get_matches();
 //    debug!("{:?}",matches);

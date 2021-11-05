@@ -56,12 +56,6 @@ impl<'a> fmt::Display for StrError<'a> {
 
 
 
-pub fn formatted_company<'a>(company: &str) -> &str {
-    match company {
-        "bigbadvoodoodaddy" => "bigbadvoodoodaddy Capital Management LLC",
-        _ => "ERROR"
-    }
-}
 
 pub fn stacked_column<'a>(company: &str, chart_title: &str, bottom_label: &str, fname: &str, scalex: f64, scaley: f64, labels: Vec<String>, data: Vec<(String,f32,String)>) -> Result<(), Box<dyn Error>> {
 
@@ -199,43 +193,6 @@ pub fn am_cover<'a>(company: &'a str, tx: &'a str) -> bool {
         _ => match tx {
             "COVER" | "BUYC" | "COVERSHORT" | "Cover" => true,
             _ => false,
-        },
-    }
-}
-
-
-pub fn mask_account<'a>(company: &'a str, aid: &'a str) -> &'a str {
-    match company {
-        "bigbadvoodoodaddy" => match aid {
-            "DMSFX" => "Carter Endowment",
-            "FGP" => "Reagan Pension",
-            "OMOIX" => "Kennedy Trust",
-            "OPP" => "Washington Roth IRA",
-            "RFM" => "Truman Inc",
-            "RIV" => "Wilson Inc",
-            "RMI" => "Bush LLC Pension",
-            "RMM" => "Obama T2",
-            "RNCOX" => "Bush LLC 401k",
-            "RNCP" => "Trump Roth IRA",
-            "RNGIX" => "Lincoln Pension",
-            "RNHIX" => "Grant IRAs",
-            "RNIP" => "Biden Offshore Trust",
-            "RNSAF" => "Buchanan Trust",
-            "RNSIX" => "Wilson 401K",
-            "RSF" => "Obama Children Trust",
-            "RV1J" => "Bush Oil 401K",
-            "SS DMSFX" => "Clinton Library Pension",
-            "UMF" => "Clinton Family Trust",
-            "VFLEX" => "Obama T1",
-            "VAM" => "Johnson Trust",
-            "VIV_BNP" => "Johnson Offshore LLC",
-            "XVAMX" => "Biden China Inc",
-            "752008483" => "Jackson Endowment",
-            "752023399" => "Hamilton IRA",
-            _ => aid,
-        },
-        _ => match aid {
-            _ => aid,
         },
     }
 }

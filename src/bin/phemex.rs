@@ -154,7 +154,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
 
-    let yaml = load_yaml!("../coinmetrics.yml");
+    let yaml = load_yaml!("../cmds.yml");
     let matches = App::from_yaml(yaml).get_matches();
 //    debug!("{:?}",matches);
 
