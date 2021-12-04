@@ -1,7 +1,17 @@
-// this use statement gets you access to the lib file
+//! The entry point for interacting with the dydx exchange.  Invoke the main by calling the program with one of two options: 
+//!
+//! RUST_LOG=DEBUG cargo run --bin dydx all-markets
+//!
+//! RUST_LOG=DEBUG cargo run --bin dydx beta-consumer
+//!
+//! The all-markets invocation writes to a kafka topic, dydx (see readme for how to create), and the beta-consumer reads it, and does the kmeans calcs, writing to a csv in /tmp
+//!
+//! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
+
+
+
+
 use slurper::*;
-
-
 use log::{info,debug,warn};
 use std::error::Error;
 //use std::convert::TryFrom;
@@ -38,7 +48,7 @@ use csv::Writer;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
-
+/// This is used to fetch all dydx asset pairs.  It's private and used in main.
 async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
      let mut rvec = Vec::new();
@@ -59,7 +69,7 @@ async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 } 
 
 
-
+/// Invoke dydx with one of the input options highlighted above.
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn Error>> {
 
@@ -171,8 +181,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }   
 
         },
-
-
 
 
         "all-markets" => {
