@@ -12,6 +12,9 @@ The mongo writes should be batched, but for now, it's just a beta.
 
 Currnetly, dydx is the only module worth exploring.  It writes to kafka on one call, and consumes on another for kmeans calcs.  
 
+## Docs
+
+After pulling the repo, run cargo doc in src dir, and then in target, you can find the docs for, say, dydx and how to use - again dydx is the most active, and the most "clean"
 
 ## Requirements local
 
