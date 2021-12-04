@@ -85,7 +85,7 @@ sudo systemctl start mongod
 
 
 ### Running DYDX - loop for quotes
-RUST_LOG=DEBUG cargo run --bin dydx all-markets
+RUST_LOG=DEBUG cargo run --bin dydx-entry all-markets
 
 
 
