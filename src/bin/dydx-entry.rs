@@ -9,13 +9,13 @@
 //! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
 
 
-
+mod dydx;
 
 use slurper::*;
 use log::{info,debug,warn};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::dydx_models::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
+use dydx::{DYDXMarkets,DYDXMarket,TLDYDXMarket};
 use self::models::{ClusterBomb};
 use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
@@ -70,7 +70,7 @@ async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 } 
 
 /// This will iterate all messages in the kafka topic dydx-markets, and build a vector for clustering, and write that return set to a csv in /tmp
-async fn consume_all_markets() -> Result<(), Box<dyn Error>> {
+async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
 
     let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
 
@@ -317,7 +317,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "beta-consumer" => {
 
-            consume_all_markets().await?;
+            consume_dydx_topic().await?;
         },
 
 
