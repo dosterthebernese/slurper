@@ -1,9 +1,17 @@
 use crate::*;
 
+use bson::serde_helpers::chrono_datetime_as_bson_datetime;
+use std::time::Duration as HackDuration;
 use std::collections::HashMap;
 use serde::{Serialize,Deserialize};
-use mongodb::{bson::doc};
+//use mongodb::{bson::doc};
 use std::fmt; // Import `fmt`
+use futures::stream::TryStreamExt;
+use mongodb::error::Error as MongoError;
+use mongodb::{Client,Collection};
+use mongodb::{bson::doc};
+use mongodb::options::{FindOptions};
+use time::Duration;
 
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
@@ -30,8 +38,16 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 } 
 
 
+/// Clean up the mongo db - generally, you wouldn't call this unless you're in fits and starts and debugging.
+pub async fn delete_dydx_data_in_mongo() -> Result<(), Box<dyn Error>>{
 
+    let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    let database = client.database(THE_DATABASE);
+    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+    dydxcol.delete_many(doc!{}, None).await?;    
+    Ok(())
 
+}
 
 /// Processes all dydx pairs, which means, every second, gets the quotes, and writes them to a Kafka topic (which must exist).
 /// The broker, topic, and if we add mongo, those should be moved to env variables.  There are some hardcoded stops, which are just dumb.
@@ -41,7 +57,7 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
     let topic = "dydx-markets";
 
     let mut producer = Producer::from_hosts(vec![broker.to_owned()])
-        .with_ack_timeout(Duration::from_secs(1))
+        .with_ack_timeout(HackDuration::from_secs(1))
         .with_required_acks(RequiredAcks::One)
         .create()?;
 
@@ -109,11 +125,12 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
             let asset_resolution = item.asset_resolution.parse::<f64>().unwrap();
 
             let tlm = TLDYDXMarket {
-                snapshot_date: &Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-                market: &item.market,
-                status: &item.status,
-                base_asset: &item.base_asset,
-                quote_asset: &item.quote_asset,
+                snapshot_date: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+                mongo_snapshot_date: Utc::now(),
+                market: item.market.clone(),
+                status: item.status,
+                base_asset: item.base_asset,
+                quote_asset: item.quote_asset,
                 step_size: item.step_size.parse::<f64>().unwrap(),
                 tick_size: item.tick_size.parse::<f64>().unwrap(),
                 index_price: index_price,
@@ -133,9 +150,9 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
                 tl_derived_price_mean_5m: tl_derived_price_mean_5m,
                 tl_derived_price_mean_10m: tl_derived_price_mean_10m,
                 next_funding_rate: next_funding_rate,
-                next_funding_at: &item.next_funding_at,
+                next_funding_at: item.next_funding_at,
                 min_order_size: min_order_size,
-                instrument_type: &item.instrument_type,
+                instrument_type: item.instrument_type,
                 initial_margin_fraction: initial_margin_fraction,
                 maintenance_margin_fraction: maintenance_margin_fraction,
                 baseline_position_size: baseline_position_size,
@@ -155,7 +172,8 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
             producer.send(&Record {
                 topic,
                 partition: -1,
-                key: (),
+//                key: (),
+                key: item.market,
                 value: data_as_bytes,
             })?;
         }
@@ -168,58 +186,43 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
 
 
 
-/// This will iterate all messages in the kafka topic dydx-markets, and build a vector for clustering, and write that return set to a csv in /tmp
+/// This will iterate all messages in the kafka topic dydx-markets, and and write to mongo (with a date lookup that needs refactoring).
 pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
-
-    let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
 
 
     let broker = "localhost:9092";
     let brokers = vec![broker.to_owned()];
     let topic = "dydx-markets";
 
+    let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    let database = client.database(THE_DATABASE);
+    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+
+
+    let mut max_market_date_hm = HashMap::new();
+    for dydxm in get_markets().await? {
+        let last_updated = dydxm.get_last_migrated_from_kafka(&dydxcol).await?;
+        max_market_date_hm.entry(dydxm.market.clone()).or_insert(last_updated);                
+    }
+
+
     let mut con = Consumer::from_hosts(brokers)
         .with_topic(topic.to_string())
 //                .with_group(group)
         .with_fallback_offset(FetchOffset::Earliest)
+//        .with_fallback_offset(FetchOffset::Latest)
         .with_offset_storage(GroupOffsetStorage::Kafka)
         .create()?;
 
-    let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-
     let mut cnt: i64 = 0;
+    let mut mcnt: i64 = 0;
     let mut min_quote_date = Utc::now();
     let mut max_quote_date = Utc::now();
 
     loop {
         let mss = con.poll()?;
         if mss.is_empty() {
-            info!("Processed {} messages for range {} to {} which is {} minutes.", cnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
-            if market_vectors.is_empty() {
-                warn!("Not yet 10 mins");
-            }                    
-            for (key,value) in market_vectors {
-                info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
-                let km_for_v_duo = do_duo_kmeans(&value);                    
-                debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
-                for (idx, kg) in km_for_v_duo.iter().enumerate() {
-                    debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
-                    let new_cluster_bomb = ClusterBomb {
-                        market: &key,
-                        min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                        max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                        minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
-                        float_one: value[idx*2],
-                        float_two: value[(idx*2)+1],
-                        group: *kg
-                    };
-                    println!("{}", new_cluster_bomb);
-                    wtr.serialize(new_cluster_bomb)?;
-
-                }
-            }
-            println!("No messages available right now.");
-            wtr.flush()?;
+            info!("Processed {} messages (only {} mongo valid) for range {} to {} which is {} minutes.", cnt, mcnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
             return Ok(());
         }
 
@@ -232,8 +235,15 @@ pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
                 let cb =  str::from_utf8(&buf).unwrap();
                 let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
                 println!("{}", des_tldm);
-                cnt += 1;
 
+                debug!("date comp for {} {} {}", des_tldm.market, max_market_date_hm[&des_tldm.market], des_tldm.mongo_snapshot_date);
+                if max_market_date_hm[&des_tldm.market] < des_tldm.mongo_snapshot_date {
+                    debug!("Saving to Mongo");
+                    let _result = dydxcol.insert_one(&des_tldm, None).await?;                                                                                                    
+                    mcnt += 1;
+                }
+
+                cnt += 1;
                 let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
                 
                 if min_quote_date > quote_date {
@@ -243,13 +253,6 @@ pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
                     max_quote_date = quote_date;
                 }
 
-                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-//                            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
-                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                }
             }
             let _ = con.consume_messageset(ms);
         }
@@ -259,48 +262,85 @@ pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
 }
 
 
+/// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.
+pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
+
+    let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
+    let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+    let mut min_quote_date = Utc::now();
+    let mut max_quote_date = Utc::now();
+
+    let client = Client::with_uri_str(LOCAL_MONGO).await?;
+    let database = client.database(THE_DATABASE);
+    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+
+    let gtedate = Utc::now() - Duration::milliseconds(1000000);
+    let filter = doc! {"mongo_snapshot_date": {"$gte": gtedate}};
+    let find_options = FindOptions::builder().sort(doc! { "snapshot_date":1}).build();
+    let mut cursor = dydxcol.find(filter, find_options).await?;
+    while let Some(des_tldm) = cursor.try_next().await? {
+
+        let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+        
+        if min_quote_date > quote_date {
+            min_quote_date = quote_date;
+        }
+        if max_quote_date < quote_date {
+            max_quote_date = quote_date;
+        }
+
+        if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+            let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+            let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+//          market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+        }
+    }
 
 
+    if market_vectors.is_empty() {
+        warn!("Not yet 10 mins");
+    }                    
+    for (key,value) in market_vectors {
+        info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+        let km_for_v_duo = do_duo_kmeans(&value);                    
+        debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
+        for (idx, kg) in km_for_v_duo.iter().enumerate() {
+            debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
+            let new_cluster_bomb = ClusterBomb {
+                market: &key,
+                min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                float_one: value[idx*2],
+                float_two: value[(idx*2)+1],
+                group: *kg
+            };
+            println!("{}", new_cluster_bomb);
+            wtr.serialize(new_cluster_bomb)?;
 
+        }
+    }
+    println!("No messages available right now.");
+    wtr.flush()?;
+    Ok(())
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
 
 
 
 /// This is the object we work with after we consume from the dydx endpoint, the biggest implication being we have floats vs strings
+/// Because Kafka likes strings for timestamps (we had string slices) and Mongo wants UTC, in order to have deserialize work properly, we changed to Strings.
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TLDYDXMarket<'a> {
-    pub snapshot_date: &'a str,
-    pub market: &'a str,
-    pub status: &'a str,
-    pub base_asset: &'a str,
-    pub quote_asset: &'a str,
+pub struct TLDYDXMarket {
+    pub snapshot_date: String,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub mongo_snapshot_date: DateTime<Utc>,
+    pub market: String,
+    pub status: String,
+    pub base_asset: String,
+    pub quote_asset: String,
     pub step_size: f64,
     pub tick_size: f64,
     pub index_price: f64,
@@ -320,9 +360,9 @@ pub struct TLDYDXMarket<'a> {
     pub tl_derived_price_mean_5m: Option<f64>,
     pub tl_derived_price_mean_10m: Option<f64>,
     pub next_funding_rate: f64,
-    pub next_funding_at: &'a str,
+    pub next_funding_at: String,
     pub min_order_size: f64,
-    pub instrument_type: &'a str,
+    pub instrument_type: String,
     pub initial_margin_fraction: f64,
     pub maintenance_margin_fraction: f64,
     pub baseline_position_size: f64,
@@ -335,7 +375,29 @@ pub struct TLDYDXMarket<'a> {
     pub asset_resolution: f64,
 }
 
-impl fmt::Display for TLDYDXMarket<'_> {
+impl TLDYDXMarket {
+
+    /// Used to get the last update date for a given market, so you do not re-consume and save to Mongo.  If no date exists (say, first run), it just goes back an hour.
+    pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+
+        let filter = doc! {"market": &self.market};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+
+        let mut big_bang = chrono::offset::Utc::now();
+        big_bang = big_bang - Duration::minutes(60000);
+
+        while let Some(cm) = cursor.try_next().await? {
+            big_bang = cm.mongo_snapshot_date;
+        }
+        Ok(big_bang)
+
+    }
+
+}
+
+
+impl fmt::Display for TLDYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "\n{:<10} {:<10} {:<10} {:>10} {:>10} 
             {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} 
@@ -364,7 +426,7 @@ impl fmt::Display for TLDYDXMarket<'_> {
 
 
 /// This is the basic object for consuming the endpoint, as the api has most things as Strings
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct DYDXMarket {
     pub market: String,
     pub status: String,
@@ -413,6 +475,27 @@ pub struct DYDXMarket {
 
 }
 
+impl DYDXMarket {
+
+    /// This is used to fetch the TL variants, as the DY variant is what's returned from the get all markets call
+    pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+
+        let filter = doc! {"market": &self.market};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+
+        let mut big_bang = chrono::offset::Utc::now();
+        big_bang = big_bang - Duration::minutes(600000);
+
+        while let Some(cm) = cursor.try_next().await? {
+            big_bang = cm.mongo_snapshot_date;
+        }
+        Ok(big_bang)
+
+    }
+
+
+}
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
