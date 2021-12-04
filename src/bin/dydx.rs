@@ -48,7 +48,8 @@ use csv::Writer;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
-/// This is used to fetch all dydx asset pairs.  It's private and used in main.
+/// This is used to fetch all dydx asset pairs. It returns a vector of markets, which I usually then use to have an async / await pool that run in parallel - you can see this in other modules. Seemed like overkill here. 
+
 async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
      let mut rvec = Vec::new();
@@ -210,6 +211,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 
 
+
+// An example, of how to wrap:
+// let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(item)).collect();
 
                 for item in get_markets().await.unwrap() {
 
