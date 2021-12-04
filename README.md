@@ -18,6 +18,11 @@ After pulling the repo, run cargo doc in src dir, and then in target, you can fi
 
 ## Requirements local
 
+### .env file in src
+
+LOCAL_MONGO=mongodb://localhost:27017
+TLDB=tradellama
+
 ### Mongo
 
 Used to track runs against coinmetrics, but will probably use for other things as well...NOT NEEDED FOR DYDX

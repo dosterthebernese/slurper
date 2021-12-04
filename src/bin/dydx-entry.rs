@@ -8,12 +8,13 @@
 //!
 //! RUST_LOG=DEBUG cargo run --bin dydx-entry clean-dydx
 //!
-//! The all-markets invocation writes to a kafka topic, dydx (see readme for how to create), and the beta-consumer reads it, and does the kmeans calcs, writing to a csv in /tmp
-//!
 //! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
 
 
 mod dydx;
+mod config;
+
+use crate::config::Config;
 
 use slurper::*;
 use log::{info,debug,warn,error};
@@ -47,6 +48,8 @@ use csv::Writer;
 pub async fn main() -> Result<(), Box<dyn Error>> {
 
     env_logger::init(); 
+    // let config = Config::from_env().expect("Server configuration");
+    // debug!("local mongo is: {}", config.local_mongo);
 
 
     let yaml = load_yaml!("../cmds.yml");
@@ -66,15 +69,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 
-
-
-
-
-
 #[cfg(test)]
 mod tests {
-//    use std::{fs};
-//    use std::fs::File;
+
+    use mongodb::Client;
+    use super::*;
 
     #[test]
     fn it_works_test_file_exists() {
@@ -85,6 +84,31 @@ mod tests {
     fn it_works_can_open_close_file() {
         assert_eq!(3 + 3, 6);
     }
+
+    #[tokio::test]
+    async fn dydx_still_has_markets() {
+        let mkts = dydx::get_markets().await.expect("holy sheep shit");
+        assert_ne!(0,mkts.len())
+    }
+
+    #[tokio::test]
+    async fn dydx_has_been_processed_at_least_once() {
+        let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await.expect("holier sheep shit");
+        let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+        let dydxcol = database.collection::<dydx::TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+        let enum_tldms = dydx::get_first_snapshot("FIL-USD").await.expect("holy sheep shit");
+
+        let last_one_processed = enum_tldms.as_ref().unwrap().get_last_migrated_from_kafka(&dydxcol).await.expect("and even more holier");
+
+        let mongo_snapshot_date = match enum_tldms.unwrap() {
+            dydx::DYDXM::TLDYDXMarket(t) => t.mongo_snapshot_date, 
+            dydx::DYDXM::DYDXMarket(_) => Utc::now(), 
+        };
+
+        assert_ne!(mongo_snapshot_date.timestamp(), last_one_processed.timestamp());
+
+    }
+
 
     #[test]
     fn trailing_vec_logic() {

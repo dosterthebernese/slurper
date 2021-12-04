@@ -10,7 +10,7 @@ use futures::stream::TryStreamExt;
 use mongodb::error::Error as MongoError;
 use mongodb::{Client,Collection};
 use mongodb::{bson::doc};
-use mongodb::options::{FindOptions};
+use mongodb::options::{FindOptions,FindOneOptions};
 use time::Duration;
 
 
@@ -41,8 +41,8 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 /// Clean up the mongo db - generally, you wouldn't call this unless you're in fits and starts and debugging.
 pub async fn delete_dydx_data_in_mongo() -> Result<(), Box<dyn Error>>{
 
-    let client = Client::with_uri_str(LOCAL_MONGO).await?;
-    let database = client.database(THE_DATABASE);
+    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
     dydxcol.delete_many(doc!{}, None).await?;    
     Ok(())
@@ -194,14 +194,15 @@ pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
     let brokers = vec![broker.to_owned()];
     let topic = "dydx-markets";
 
-    let client = Client::with_uri_str(LOCAL_MONGO).await?;
-    let database = client.database(THE_DATABASE);
+    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
 
 
     let mut max_market_date_hm = HashMap::new();
     for dydxm in get_markets().await? {
-        let last_updated = dydxm.get_last_migrated_from_kafka(&dydxcol).await?;
+        let edydxm = DYDXM::DYDXMarket(dydxm.clone());
+        let last_updated = edydxm.get_last_migrated_from_kafka(&dydxcol).await?;
         max_market_date_hm.entry(dydxm.market.clone()).or_insert(last_updated);                
     }
 
@@ -261,6 +262,23 @@ pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
 
 }
 
+pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Box<MongoError>> {
+    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+
+
+    let filter = doc! {"market": market};
+    let find_options = FindOneOptions::builder().sort(doc! { "snapshot_date":1}).build();
+    let d = dydxcol.find_one(filter, find_options).await?;
+    match d {
+        Some(snap) => Ok(Some(DYDXM::TLDYDXMarket(snap))),
+        None => Ok(None),
+    }
+
+
+}
+
 
 /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.
 pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
@@ -270,8 +288,8 @@ pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
     let mut min_quote_date = Utc::now();
     let mut max_quote_date = Utc::now();
 
-    let client = Client::with_uri_str(LOCAL_MONGO).await?;
-    let database = client.database(THE_DATABASE);
+    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
 
     let gtedate = Utc::now() - Duration::milliseconds(1000000);
@@ -322,13 +340,40 @@ pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
 
         }
     }
-    println!("No messages available right now.");
     wtr.flush()?;
     Ok(())
 
 }
 
+pub enum DYDXM {
+    TLDYDXMarket(TLDYDXMarket),
+    DYDXMarket(DYDXMarket)
+}
 
+impl DYDXM {
+    /// Used to get the last update date for a given market, so you do not re-consume and save to Mongo.  If no date exists (say, first run), it just goes back an hour.
+    pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+
+        let market = match &*self {
+            DYDXM::TLDYDXMarket(t) => &t.market, 
+            DYDXM::DYDXMarket(d) => &d.market, 
+        };
+
+        let filter = doc! {"market": market};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+
+        let mut big_bang = chrono::offset::Utc::now();
+        big_bang = big_bang - Duration::minutes(60000);
+
+        while let Some(cm) = cursor.try_next().await? {
+            big_bang = cm.mongo_snapshot_date;
+        }
+        Ok(big_bang)
+
+    }
+
+}
 
 /// This is the object we work with after we consume from the dydx endpoint, the biggest implication being we have floats vs strings
 /// Because Kafka likes strings for timestamps (we had string slices) and Mongo wants UTC, in order to have deserialize work properly, we changed to Strings.
@@ -375,26 +420,26 @@ pub struct TLDYDXMarket {
     pub asset_resolution: f64,
 }
 
-impl TLDYDXMarket {
+// impl TLDYDXMarket {
 
-    /// Used to get the last update date for a given market, so you do not re-consume and save to Mongo.  If no date exists (say, first run), it just goes back an hour.
-    pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+//     /// Used to get the last update date for a given market, so you do not re-consume and save to Mongo.  If no date exists (say, first run), it just goes back an hour.
+//     pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
 
-        let filter = doc! {"market": &self.market};
-        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
-        let mut cursor = collection.find(filter, find_options).await?;
+//         let filter = doc! {"market": &self.market};
+//         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
+//         let mut cursor = collection.find(filter, find_options).await?;
 
-        let mut big_bang = chrono::offset::Utc::now();
-        big_bang = big_bang - Duration::minutes(60000);
+//         let mut big_bang = chrono::offset::Utc::now();
+//         big_bang = big_bang - Duration::minutes(60000);
 
-        while let Some(cm) = cursor.try_next().await? {
-            big_bang = cm.mongo_snapshot_date;
-        }
-        Ok(big_bang)
+//         while let Some(cm) = cursor.try_next().await? {
+//             big_bang = cm.mongo_snapshot_date;
+//         }
+//         Ok(big_bang)
 
-    }
+//     }
 
-}
+// }
 
 
 impl fmt::Display for TLDYDXMarket {
@@ -475,27 +520,27 @@ pub struct DYDXMarket {
 
 }
 
-impl DYDXMarket {
+// impl DYDXMarket {
 
-    /// This is used to fetch the TL variants, as the DY variant is what's returned from the get all markets call
-    pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+    // /// This is used to fetch the TL variants, as the DY variant is what's returned from the get all markets call
+    // pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
 
-        let filter = doc! {"market": &self.market};
-        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
-        let mut cursor = collection.find(filter, find_options).await?;
+    //     let filter = doc! {"market": &self.market};
+    //     let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
+    //     let mut cursor = collection.find(filter, find_options).await?;
 
-        let mut big_bang = chrono::offset::Utc::now();
-        big_bang = big_bang - Duration::minutes(600000);
+    //     let mut big_bang = chrono::offset::Utc::now();
+    //     big_bang = big_bang - Duration::minutes(600000);
 
-        while let Some(cm) = cursor.try_next().await? {
-            big_bang = cm.mongo_snapshot_date;
-        }
-        Ok(big_bang)
+    //     while let Some(cm) = cursor.try_next().await? {
+    //         big_bang = cm.mongo_snapshot_date;
+    //     }
+    //     Ok(big_bang)
 
-    }
+    // }
 
 
-}
+// }
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
