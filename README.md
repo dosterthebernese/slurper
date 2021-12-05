@@ -111,3 +111,5 @@ db.crypto_trade.createIndex({'trade_date': 1, 'tx_type': 1})
 db.crypto_trade.createIndex({'trade_date': 1, 'tx_type': 1, 'market': 1})
 
 db.crypto_trade.createIndex({'trade_date': 1, 'tx_type': 1, 'trade_llama_instrument_type': 1})
+
+db.tldydxsnap.createIndex({'mongo_snapshot_date': 1})

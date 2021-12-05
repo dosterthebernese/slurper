@@ -20,7 +20,7 @@ use slurper::*;
 use log::{info,debug,warn,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{ClusterBomb};
+use self::models::{ClusterBomb,ClusterBombTriple};
 use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval

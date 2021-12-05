@@ -12,7 +12,7 @@ use mongodb::{Client,Collection};
 use mongodb::{bson::doc};
 use mongodb::options::{FindOptions,FindOneOptions};
 use time::Duration;
-
+use std::convert::TryFrom;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
@@ -284,7 +284,9 @@ pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Bo
 pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
 
     let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
+    let mut wtr3 = Writer::from_path("/tmp/cluster_bombs_triple.csv")?;
     let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+    let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
     let mut min_quote_date = Utc::now();
     let mut max_quote_date = Utc::now();
 
@@ -292,12 +294,15 @@ pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
 
-    let gtedate = Utc::now() - Duration::milliseconds(1000000);
+    let gtedate = Utc::now() - Duration::milliseconds(5000000);
     let filter = doc! {"mongo_snapshot_date": {"$gte": gtedate}};
-    let find_options = FindOptions::builder().sort(doc! { "snapshot_date":1}).build();
+    let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
     let mut cursor = dydxcol.find(filter, find_options).await?;
+
+    let mut cnt = 0;
     while let Some(des_tldm) = cursor.try_next().await? {
 
+        cnt += 1;
         let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
         
         if min_quote_date > quote_date {
@@ -313,7 +318,22 @@ pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
             let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
 //          market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
             market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+            debug!("inserted into the double {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn);
+
+            let vfut = des_tldm.get_next_n_snapshots(180,&dydxcol).await?;
+            if let Some(snaps) = vfut {
+                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                let fut_index_price = snaps[snaps.len()-1].index_price;
+                let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+            }
+
         }
+
+        debug!("{} {} {}", market_vectors.len(), market_vectors_triple.len(), cnt);
+
     }
 
 
@@ -340,7 +360,36 @@ pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
 
         }
     }
+
+
+
+    if market_vectors_triple.is_empty() {
+        warn!("I really cannot say.");
+    }                    
+    for (key,value) in market_vectors_triple {
+        info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+        let km_for_v_triple = do_triple_kmeans(&value);                    
+        debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+        for (idx, kg) in km_for_v_triple.iter().enumerate() {
+            debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+            let new_cluster_bomb = ClusterBombTriple {
+                market: &key,
+                min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                float_one: value[idx*3],
+                float_two: value[(idx*3)+1],
+                float_three: value[(idx*3)+2],
+                group: *kg
+            };
+            println!("{}", new_cluster_bomb);
+            wtr3.serialize(new_cluster_bomb)?;
+
+        }
+    }
+
     wtr.flush()?;
+    wtr3.flush()?;
     Ok(())
 
 }
@@ -420,26 +469,26 @@ pub struct TLDYDXMarket {
     pub asset_resolution: f64,
 }
 
-// impl TLDYDXMarket {
+impl TLDYDXMarket {
+    ///Get the price movement after a given trade (self), to use for clustering on possible signal generation.
+    pub async fn get_next_n_snapshots(self: &Self, n: i64, collection: &Collection<TLDYDXMarket>) -> Result<Option<Vec<TLDYDXMarket>>,MongoError> {
+        let filter = doc! {"market": &self.market, "mongo_snapshot_date": {"$gte": self.mongo_snapshot_date}};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).limit(n).build();
+        let mut cursor = collection.find(filter, find_options).await?;
+        let mut sss: Vec<TLDYDXMarket> = Vec::new();
+        while let Some(ss) = cursor.try_next().await? {
+            sss.push(ss.clone());                
+        }
 
-//     /// Used to get the last update date for a given market, so you do not re-consume and save to Mongo.  If no date exists (say, first run), it just goes back an hour.
-//     pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
+        if sss.len() < usize::try_from(n).unwrap_or(0) {
+            warn!("Not enough trades following self, likely need to wait and run again. {} {}", sss.len(), n);
+            Ok(None)
+        } else {
+            Ok(Some(sss))        
+        }
 
-//         let filter = doc! {"market": &self.market};
-//         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
-//         let mut cursor = collection.find(filter, find_options).await?;
-
-//         let mut big_bang = chrono::offset::Utc::now();
-//         big_bang = big_bang - Duration::minutes(60000);
-
-//         while let Some(cm) = cursor.try_next().await? {
-//             big_bang = cm.mongo_snapshot_date;
-//         }
-//         Ok(big_bang)
-
-//     }
-
-// }
+    }
+}
 
 
 impl fmt::Display for TLDYDXMarket {

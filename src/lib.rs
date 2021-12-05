@@ -497,6 +497,38 @@ pub fn do_duo_kmeans<'a>(v: &Vec<f64>) -> Vec<i32> {
 }
 
 
+pub fn do_triple_kmeans<'a>(v: &Vec<f64>) -> Vec<i32> {
+
+    let rng = Isaac64Rng::seed_from_u64(42);
+    let expected_centroids = array![[1000., 1000., 4.], [10000., 10000., 3.], [100000., 100000., 2.], [1000000., 1000000., 1.],];
+//    let n = 10000;
+    let zdataset =  Array::from_shape_vec((v.len() / 3, 3), v.to_vec()).unwrap();
+    let dataset = DatasetBase::from(zdataset);
+    let n_clusters = expected_centroids.len_of(Axis(0));
+    let model = KMeans::params_with_rng(n_clusters, rng)
+        .max_n_iterations(200)
+        .tolerance(1e-5)
+        .fit(&dataset)
+        .expect("KMeans fitted");
+    let dataset = model.predict(dataset);
+    let DatasetBase {
+        records, targets, ..
+    } = dataset;
+
+    debug!("records for records warning {:?}", records);
+    let mut rvec = Vec::new();
+
+    for idx in 0..(v.len() / 3) {
+        let k = targets[idx] as i32;
+        rvec.push(k);
+    }
+
+    assert_eq!(v.len() / 3, rvec.len());
+
+    rvec
+
+}
+
 
 
 
