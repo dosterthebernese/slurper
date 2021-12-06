@@ -3,7 +3,6 @@ use crate::*;
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use std::time::Duration as HackDuration;
 use std::collections::HashMap;
-use utils::TimeRange;
 use serde::{Serialize,Deserialize};
 //use mongodb::{bson::doc};
 use std::fmt; // Import `fmt`
@@ -16,19 +15,6 @@ use time::Duration;
 use std::convert::TryFrom;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
-
-
-///This is used to fetch a range count per asset pair.  It's primary use is to identify when the quote process stalled, and how long it was out for.
-pub async fn range_count<'a>(tr: &'a TimeRange, dydxcol: &Collection<TLDYDXMarket>) -> Result<HashMap<String,i32>, MongoError> {
-    let filter = doc! {"mongo_snapshot_date": {"$gte": tr.gtedate}, "mongo_snapshot_date": {"$lt": tr.ltdate}};
-    let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
-    let mut cursor = dydxcol.find(filter, find_options).await?;
-    let mut hm: HashMap<String, i32> = HashMap::new(); 
-    while let Some(des_tldm) = cursor.try_next().await? {
-        hm.entry(des_tldm.market.clone()).and_modify(|e| { *e += 1}).or_insert(1);
-    }
-    Ok(hm)
-}
 
 
 
@@ -53,16 +39,16 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 } 
 
 
-/// Clean up the mongo db - generally, you wouldn't call this unless you're in fits and starts and debugging.
-pub async fn delete_dydx_data_in_mongo() -> Result<(), Box<dyn Error>>{
+// /// Clean up the mongo db - generally, you wouldn't call this unless you're in fits and starts and debugging.
+// pub async fn delete_dydx_data_in_mongo() -> Result<(), Box<dyn Error>>{
 
-    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
-    dydxcol.delete_many(doc!{}, None).await?;    
-    Ok(())
+//     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+//     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+//     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+//     dydxcol.delete_many(doc!{}, None).await?;    
+//     Ok(())
 
-}
+// }
 
 /// Processes all dydx pairs, which means, every second, gets the quotes, and writes them to a Kafka topic (which must exist).
 /// The broker, topic, and if we add mongo, those should be moved to env variables.  There are some hardcoded stops, which are just dumb.

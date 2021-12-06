@@ -2,6 +2,7 @@
 
 use crate::*;
 
+use std::fmt; 
 use std::collections::HashMap;
 use chrono::{NaiveDateTime,DateTime,Utc};
 use mongodb::{Collection};
@@ -62,8 +63,6 @@ pub fn  get_time_ranges<'a>(
 }
 
 
-
-
 /// Very useful - set a begin and end, and have generic collections for calls in the methods.  Note that you get away with the complete generic on collection, because not finding (not needing any data parm knowledge).
 /// So all methods need to be very grandiose, like delete all.
 #[derive(Debug, Clone)]
@@ -73,6 +72,16 @@ pub struct TimeRange {
 }
 
 impl TimeRange {
+
+
+    // Use this for cleanup.  Assuming no data 1000000 (mm) before today.
+    pub fn annihilation() -> Self {
+        Self { 
+            gtedate: Utc::now() - Duration::days(1000000),
+            ltdate: Utc::now(),
+        }
+    }
+
 
     /// So you give it a span, say a day, in the struct, and it returns a vec of same struct, hourly intervals.  Great to feed into a multithread where you want to process hourlies in tandem for a day.
     pub fn get_hourlies(self: &Self) -> Result<Vec<TimeRange>,Box<dyn Error>> {
@@ -92,10 +101,16 @@ impl TimeRange {
         Ok(time_ranges)
     }
 
-    /// Pass any collection, delete the range.  Delete many works with generic collection, weird.  I don't think a find op would.
+    /// Pass any collection, delete the range.  Delete many works with generic collection, weird.  I don't think a find op would.  This flavor requires a gte and lt date.
     pub async fn delete_exact_range<T>(self: &Self, collection: &Collection<T>) -> Result<(),MongoError> {
         collection.delete_many(doc!{"gtedate": &self.gtedate, "ltdate": &self.ltdate}, None).await?;    
         debug!("deleted {} {}", &self.gtedate, &self.ltdate);
+        Ok(())
+    }
+
+    /// This requires a TLDYDXMarket collection to be passed in.  
+    pub async fn delete_exact_range_tldydxmarket(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), MongoError> {
+        dydxcol.delete_many(doc!{"mongo_snapshot_date": {"$gte": self.gtedate}, "mongo_snapshot_date": {"$lt": self.ltdate}}, None).await?;    
         Ok(())
     }
 
@@ -112,9 +127,22 @@ impl TimeRange {
         Ok(hm)
     }
 
+}
 
+/// The last hour is the default.
+impl Default for TimeRange {
+    fn default() -> Self {
+        Self { 
+            gtedate: Utc::now() - Duration::minutes(60),
+            ltdate: Utc::now() 
+        }
+    }
+}
 
-
+impl fmt::Display for TimeRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:>10.4} {:>10.4}", self.gtedate, self.ltdate)
+    }
 }
 
 

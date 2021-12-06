@@ -64,7 +64,20 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     info!("processing on directive input: {}", matches.value_of("INPUT").unwrap());
 
     match matches.value_of("INPUT").unwrap() {
-        "clean-dydx" => dydx::delete_dydx_data_in_mongo().await?,            
+
+        "poc" => {
+            let tr = utils::TimeRange::default();
+            println!("{}",tr);
+        },
+
+        "clean-dydx" => {
+            let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+            let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+            let tr = utils::TimeRange::annihilation();
+            tr.delete_exact_range_tldydxmarket(&dydxcol).await?
+        },
+
         "consumer-mongo" => dydx::consume_dydx_topic().await?,
         
         "gap-analysis" => {
@@ -82,7 +95,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     match r {
                         Ok(aggsv) => {
                             for aggs in aggsv {
-                                debug!("{:?}", aggs);
+                                debug!("{} {} {} {:?}", otr.gtedate, otr.ltdate, idx, aggs);
                             }
                         },
                         Err(error) => {
@@ -103,8 +116,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
                 snap_count: 180,
             };
-            iopv.index_oracle_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple",&dydxcol).await?
+            iopv.index_oracle_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple.csv",&dydxcol).await?
         },
+
         "all-markets" => dydx::process_all_markets().await?,
         _ => error!("Unrecognized input parm."),
     }
