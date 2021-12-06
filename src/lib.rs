@@ -1,7 +1,6 @@
 pub mod models;
 //pub mod dydx_models;
 
-use self::models::{TimeRange};
 
 use std::collections::HashMap;
 
@@ -201,52 +200,6 @@ pub fn am_cover<'a>(company: &'a str, tx: &'a str) -> bool {
 
 
 
-pub fn get_time_range<'a>(
-    d1: &'a str,
-    d2: &'a str,
-    df: &'a str,
-) -> Result<TimeRange, Box<dyn Error>> {
-    let d1 = NaiveDateTime::parse_from_str(d1, df)?;
-    let d2 = NaiveDateTime::parse_from_str(d2, df)?;
-    let utcd1 = DateTime::<Utc>::from_utc(d1, Utc);
-    let utcd2 = DateTime::<Utc>::from_utc(d2, Utc);
-
-    let time_range = TimeRange {
-        gtedate: utcd1,
-        ltdate: utcd2,
-    };
-
-    Ok(time_range)
-}
-
-pub fn  get_time_ranges<'a>(
-    d1: &'a str,
-    d2: &'a str,
-    df: &'a str,
-    dint: &'a i64,
-) -> Result<Vec<TimeRange>, Box<dyn Error>> {
-    let d1 = NaiveDateTime::parse_from_str(d1, df)?;
-    let d2 = NaiveDateTime::parse_from_str(d2, df)?;
-    // let utcd1 = DateTime::<Utc>::from_utc(d1,Utc);
-    // let utcd2 = DateTime::<Utc>::from_utc(d2,Utc);
-
-    let mut dt = d1;
-
-    let mut time_ranges = Vec::new();
-
-    while dt < d2 {
-        let gtd = dt;
-        let ltd = gtd + Duration::days(*dint);
-        dt = dt + Duration::days(1);
-        let tr = TimeRange {
-            gtedate: DateTime::<Utc>::from_utc(gtd, Utc),
-            ltdate: DateTime::<Utc>::from_utc(ltd, Utc),
-        };
-        time_ranges.push(tr);
-    }
-
-    Ok(time_ranges)
-}
 
 
 pub fn get_hour_in_day_index<'a>(trade_date: DateTime<Utc>) -> i64 {

@@ -1,4 +1,5 @@
 // this use statement gets you access to the lib file - you use crate instead of the package name, who the fuck knows why (see any bin rs)
+
 use crate::*;
 
 use std::collections::HashMap;
@@ -10,13 +11,14 @@ use chrono::{DateTime,Utc};
 use chrono::format::ParseError;
 
 use mongodb::{Collection};
-use mongodb::{error::Error};
+use mongodb::error::Error as MongoError;
 use mongodb::{bson::doc};
 use mongodb::options::{FindOptions};
 use futures::stream::TryStreamExt;
 
 use time::Duration;
 use average::{WeightedMean,Min,Max};
+
 
 use std::fmt; // Import `fmt`
 use std::fmt::Error as NormalError;
@@ -75,7 +77,7 @@ pub struct AssetPair<'a> {
 
 impl AssetPair<'_> {
 
-    pub async fn get_last_updated_trade<'a>(self: &Self, source: &'a str, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, Error> {
+    pub async fn get_last_updated_trade<'a>(self: &Self, source: &'a str, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, MongoError> {
 
         let filter = doc! {"thing": &self.altname, "source": source, "thing": "asset pair"};
         let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
@@ -128,7 +130,7 @@ impl CryptoMarket<'_> {
         } 
     }
 
-    pub async fn get_last_updated_trade(self: &Self, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, Error> {
+    pub async fn get_last_updated_trade(self: &Self, collection: &Collection<SourceThingLastUpdate>) -> Result<DateTime<Utc>, MongoError> {
 
         let filter = doc! {"thing": &self.market, "source": "coinmetrics", "thing": "market"};
         let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
@@ -144,7 +146,7 @@ impl CryptoMarket<'_> {
 
     }
 
-    pub async fn get_last_migrated_trade(self: &Self, collection: &Collection<CryptoTrade>) -> Result<DateTime<Utc>, Error> {
+    pub async fn get_last_migrated_trade(self: &Self, collection: &Collection<CryptoTrade>) -> Result<DateTime<Utc>, MongoError> {
 
         let filter = doc! {"market": &self.market};
         let find_options = FindOptions::builder().sort(doc! { "trade_date":-1}).limit(1).build();
@@ -896,39 +898,57 @@ impl fmt::Display for RangeBoundMarketSummary {
 
 
 
-/// Very useful - set a begin and end, and have generic collections for calls in the methods.  Note that you get away with the complete generic on collection, because not finding (not needing any data parm knowledge).
-/// So all methods need to be very grandiose, like delete all.
-#[derive(Debug, Clone)]
-pub struct TimeRange {
-    pub gtedate: DateTime<Utc>,
-    pub ltdate: DateTime<Utc>,
-}
+// /// Very useful - set a begin and end, and have generic collections for calls in the methods.  Note that you get away with the complete generic on collection, because not finding (not needing any data parm knowledge).
+// /// So all methods need to be very grandiose, like delete all.
+// #[derive(Debug, Clone)]
+// pub struct TimeRange {
+//     pub gtedate: DateTime<Utc>,
+//     pub ltdate: DateTime<Utc>,
+// }
 
-impl TimeRange {
+// impl TimeRange {
 
-    pub fn get_hourlies(self: &Self) -> Result<Vec<TimeRange>,Error> {
-        let mut time_ranges = Vec::new();
-        let mut dt = self.gtedate;
-        while dt < self.ltdate {
-            let gtd = dt;
-            let ltd = gtd + Duration::hours(1);
-            dt = dt + Duration::hours(1);
+//     /// So you give it a span, say a day, in the struct, and it returns a vec of same struct, hourly intervals.  Great to feed into a multithread where you want to process hourlies in tandem for a day.
+//     pub fn get_hourlies(self: &Self) -> Result<Vec<TimeRange>,Box<dyn Error>> {
+//         let mut time_ranges = Vec::new();
+//         let mut dt = self.gtedate;
+//         while dt < self.ltdate {
+//             let gtd = dt;
+//             let ltd = gtd + Duration::hours(1);
+//             dt = dt + Duration::hours(1);
 
-            let tr = TimeRange {
-                gtedate: gtd.clone(),
-                ltdate: ltd.clone(),
-            };
-            time_ranges.push(tr);
-        }
-        Ok(time_ranges)
-    }
+//             let tr = TimeRange {
+//                 gtedate: gtd.clone(),
+//                 ltdate: ltd.clone(),
+//             };
+//             time_ranges.push(tr);
+//         }
+//         Ok(time_ranges)
+//     }
 
-    pub async fn delete_exact_range<T>(self: &Self, collection: &Collection<T>) -> Result<(),Error> {
-        collection.delete_many(doc!{"gtedate": &self.gtedate, "ltdate": &self.ltdate}, None).await?;    
-        debug!("deleted {} {}", &self.gtedate, &self.ltdate);
-        Ok(())
-    }
+//     /// Pass any collection, delete the range.  Delete many works with generic collection, weird.  I don't think a find op would.
+//     pub async fn delete_exact_range<T>(self: &Self, collection: &Collection<T>) -> Result<(),MongoError> {
+//         collection.delete_many(doc!{"gtedate": &self.gtedate, "ltdate": &self.ltdate}, None).await?;    
+//         debug!("deleted {} {}", &self.gtedate, &self.ltdate);
+//         Ok(())
+//     }
 
-}
+//     ///This is used to fetch a range count per asset pair.  It's primary use is to identify when the quote process stalled, and how long it was out for.
+//     ///Note that it is specifc to TLDYDXMarket struct.
+//     pub async fn range_count<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<HashMap<String,i32>, MongoError> {
+//         let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}, "mongo_snapshot_date": {"$lt": self.ltdate}};
+//         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+//         let mut cursor = dydxcol.find(filter, find_options).await?;
+//         let mut hm: HashMap<String, i32> = HashMap::new(); 
+//         while let Some(des_tldm) = cursor.try_next().await? {
+//             hm.entry(des_tldm.market.clone()).and_modify(|e| { *e += 1}).or_insert(1);
+//         }
+//         Ok(hm)
+//     }
+
+
+
+
+// }
 
 

@@ -3,6 +3,7 @@ use crate::*;
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use std::time::Duration as HackDuration;
 use std::collections::HashMap;
+use self::models::TimeRange;
 use serde::{Serialize,Deserialize};
 //use mongodb::{bson::doc};
 use std::fmt; // Import `fmt`
@@ -16,8 +17,22 @@ use std::convert::TryFrom;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
-/// This is used to fetch all dydx asset pairs. It returns a vector of markets, which I usually then use to have an async / await pool that run in parallel - you can see this in other modules. Seemed like overkill here. 
 
+///This is used to fetch a range count per asset pair.  It's primary use is to identify when the quote process stalled, and how long it was out for.
+pub async fn range_count<'a>(tr: &'a TimeRange, dydxcol: &Collection<TLDYDXMarket>) -> Result<HashMap<String,i32>, MongoError> {
+    let filter = doc! {"mongo_snapshot_date": {"$gte": tr.gtedate}, "mongo_snapshot_date": {"$lt": tr.ltdate}};
+    let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+    let mut cursor = dydxcol.find(filter, find_options).await?;
+    let mut hm: HashMap<String, i32> = HashMap::new(); 
+    while let Some(des_tldm) = cursor.try_next().await? {
+        hm.entry(des_tldm.market.clone()).and_modify(|e| { *e += 1}).or_insert(1);
+    }
+    Ok(hm)
+}
+
+
+
+/// This is used to fetch all dydx asset pairs. It returns a vector of markets, which I usually then use to have an async / await pool that run in parallel - you can see this in other modules. Seemed like overkill here. 
 pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
      let mut rvec = Vec::new();
@@ -289,6 +304,18 @@ pub struct IOVolPerf {
 
 impl IOVolPerf {
 
+    pub async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+        let mut cursor = dydxcol.find(filter, find_options).await?;
+        let mut sss: Vec<TLDYDXMarket> = Vec::new();
+        while let Some(des_tldm) = cursor.try_next().await? {
+            sss.push(des_tldm);
+        }
+        Ok(sss)
+    }
+
+
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
     pub async fn index_oracle_volatility<'a>(self: &Self, dfile: &'a str, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
@@ -298,17 +325,9 @@ impl IOVolPerf {
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut min_quote_date = Utc::now();
         let mut max_quote_date = Utc::now();
-
-        // let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-        // let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-        // let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
-
-        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}};
-        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
-        let mut cursor = dydxcol.find(filter, find_options).await?;
-
         let mut cnt = 0;
-        while let Some(des_tldm) = cursor.try_next().await? {
+
+        for des_tldm in self.get_range_of_quotes(dydxcol).await? {
 
             cnt += 1;
             let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
@@ -343,6 +362,8 @@ impl IOVolPerf {
             debug!("{} {} {}", market_vectors.len(), market_vectors_triple.len(), cnt);
 
         }
+
+
 
 
         if market_vectors.is_empty() {

@@ -10,13 +10,15 @@
 //!
 //! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
 
+mod dydx;
+mod config;
+mod utils;
+
 use dydx::TLDYDXMarket;
 use mongodb::{Client};
 
 use time::Duration;
 
-mod dydx;
-mod config;
 
 use crate::config::Config;
 
@@ -25,6 +27,7 @@ use log::{info,debug,warn,error};
 use std::error::Error;
 //use std::convert::TryFrom;
 use self::models::{ClusterBomb,ClusterBombTriple};
+use futures::future::join_all;
 use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
 use tokio::time::Duration as TokioDuration;  //renamed norm duration so could use this for interval
@@ -63,6 +66,34 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     match matches.value_of("INPUT").unwrap() {
         "clean-dydx" => dydx::delete_dydx_data_in_mongo().await?,            
         "consumer-mongo" => dydx::consume_dydx_topic().await?,
+        
+        "gap-analysis" => {
+            let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+            let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+            let time_ranges = utils::get_time_ranges("2021-12-01 00:00:00","2022-01-01 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+            for otr in &time_ranges{
+                let hourlies = otr.get_hourlies().unwrap();
+                assert_eq!(hourlies.len(),24);
+                let hcol: Vec<_> = (0..24).map(|n| hourlies[n].get_range_count(&dydxcol)).collect();
+                let rvec = join_all(hcol).await;
+
+                for (idx, r) in rvec.iter().enumerate() {
+                    match r {
+                        Ok(aggsv) => {
+                            for aggs in aggsv {
+                                debug!("{:?}", aggs);
+                            }
+                        },
+                        Err(error) => {
+                            error!("Hour {:?} Error: {:?}", idx+1,  error);
+                            panic!("We choose to no longer live.")                            
+                        }
+                    }
+                }
+            }
+        },
+
         "index-oracle-vol" => {
 
             let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;

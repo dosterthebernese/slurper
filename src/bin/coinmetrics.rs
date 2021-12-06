@@ -350,7 +350,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             let database = client.database(THE_DATABASE);
             let collection = database.collection::<CryptoTrade>(THE_CRYPTO_TRADES_COLLECTION);
 
-            let time_ranges = get_time_ranges("2021-10-27 00:00:00","2021-10-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
+            let time_ranges = utils::get_time_ranges("2021-10-27 00:00:00","2021-10-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap(); 
 
             for otr in &time_ranges{
                 let hourlies = otr.get_hourlies().unwrap();
