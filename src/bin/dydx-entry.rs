@@ -10,6 +10,10 @@
 //!
 //! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
 
+use dydx::TLDYDXMarket;
+use mongodb::{Client};
+
+use time::Duration;
 
 mod dydx;
 mod config;
@@ -59,7 +63,17 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     match matches.value_of("INPUT").unwrap() {
         "clean-dydx" => dydx::delete_dydx_data_in_mongo().await?,            
         "consumer-mongo" => dydx::consume_dydx_topic().await?,
-        "index-oracle-vol" => dydx::index_oracle_volatility().await?,
+        "index-oracle-vol" => {
+
+            let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+            let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+            let iopv = dydx::IOVolPerf {
+                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                snap_count: 180,
+            };
+            iopv.index_oracle_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple",&dydxcol).await?
+        },
         "all-markets" => dydx::process_all_markets().await?,
         _ => error!("Unrecognized input parm."),
     }

@@ -896,6 +896,8 @@ impl fmt::Display for RangeBoundMarketSummary {
 
 
 
+/// Very useful - set a begin and end, and have generic collections for calls in the methods.  Note that you get away with the complete generic on collection, because not finding (not needing any data parm knowledge).
+/// So all methods need to be very grandiose, like delete all.
 #[derive(Debug, Clone)]
 pub struct TimeRange {
     pub gtedate: DateTime<Utc>,

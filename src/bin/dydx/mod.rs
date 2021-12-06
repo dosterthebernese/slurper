@@ -279,120 +279,135 @@ pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Bo
 
 }
 
+/// Useful to have a struct for certain variables, as the data would be helpful in rendering to an artifact outside the calcs.  Note that we use a snap count as an i64, vs usual lt date, as it is a reminder of the assumption about the quotes being one second intervals.  You could add an assert that the limit is close to 100 (or equal).  
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IOVolPerf {
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub gtedate: DateTime<Utc>,
+    pub snap_count: i64 // I could use the less than model, but this is a reminder that this is a 1 second assumption on each snap
+}
 
-/// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.
-pub async fn index_oracle_volatility() -> Result<(), Box<dyn Error>> {
+impl IOVolPerf {
 
-    let mut wtr = Writer::from_path("/tmp/cluster_bombs.csv")?;
-    let mut wtr3 = Writer::from_path("/tmp/cluster_bombs_triple.csv")?;
-    let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-    let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-    let mut min_quote_date = Utc::now();
-    let mut max_quote_date = Utc::now();
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
+    pub async fn index_oracle_volatility<'a>(self: &Self, dfile: &'a str, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+        let mut wtr = Writer::from_path(dfile)?;
+        let mut wtr3 = Writer::from_path(tfile)?;
+        let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut min_quote_date = Utc::now();
+        let mut max_quote_date = Utc::now();
 
-    let gtedate = Utc::now() - Duration::milliseconds(5000000);
-    let filter = doc! {"mongo_snapshot_date": {"$gte": gtedate}};
-    let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
-    let mut cursor = dydxcol.find(filter, find_options).await?;
+        // let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
+        // let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+        // let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
 
-    let mut cnt = 0;
-    while let Some(des_tldm) = cursor.try_next().await? {
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+        let mut cursor = dydxcol.find(filter, find_options).await?;
 
-        cnt += 1;
-        let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-        
-        if min_quote_date > quote_date {
-            min_quote_date = quote_date;
-        }
-        if max_quote_date < quote_date {
-            max_quote_date = quote_date;
-        }
+        let mut cnt = 0;
+        while let Some(des_tldm) = cursor.try_next().await? {
 
-        if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-            let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-            let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-//          market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
-            market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-            debug!("inserted into the double {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn);
-
-            let vfut = des_tldm.get_next_n_snapshots(180,&dydxcol).await?;
-            if let Some(snaps) = vfut {
-                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                let fut_index_price = snaps[snaps.len()-1].index_price;
-                let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+            cnt += 1;
+            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+            
+            if min_quote_date > quote_date {
+                min_quote_date = quote_date;
+            }
+            if max_quote_date < quote_date {
+                max_quote_date = quote_date;
             }
 
+            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+    //          market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);                        
+                market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                debug!("inserted into the double {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn);
+
+                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
+                if let Some(snaps) = vfut {
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                    let fut_index_price = snaps[snaps.len()-1].index_price;
+                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                }
+
+            }
+
+            debug!("{} {} {}", market_vectors.len(), market_vectors_triple.len(), cnt);
+
         }
 
-        debug!("{} {} {}", market_vectors.len(), market_vectors_triple.len(), cnt);
+
+        if market_vectors.is_empty() {
+            warn!("Not yet 10 mins");
+        }                    
+        for (key,value) in market_vectors {
+            info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+            let km_for_v_duo = do_duo_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_duo.iter().enumerate() {
+                debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
+                let new_cluster_bomb = ClusterBomb {
+                    market: &key,
+                    min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                    float_one: value[idx*2],
+                    float_two: value[(idx*2)+1],
+                    group: *kg
+                };
+                println!("{}", new_cluster_bomb);
+                wtr.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+
+
+        if market_vectors_triple.is_empty() {
+            warn!("I really cannot say.");
+        }                    
+        for (key,value) in market_vectors_triple {
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+            let km_for_v_triple = do_triple_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_triple.iter().enumerate() {
+                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+                let new_cluster_bomb = ClusterBombTriple {
+                    market: &key,
+                    min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                    float_one: value[idx*3],
+                    float_two: value[(idx*3)+1],
+                    float_three: value[(idx*3)+2],
+                    group: *kg
+                };
+                println!("{}", new_cluster_bomb);
+                wtr3.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+        wtr.flush()?;
+        wtr3.flush()?;
+        Ok(())
 
     }
 
 
-    if market_vectors.is_empty() {
-        warn!("Not yet 10 mins");
-    }                    
-    for (key,value) in market_vectors {
-        info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
-        let km_for_v_duo = do_duo_kmeans(&value);                    
-        debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
-        for (idx, kg) in km_for_v_duo.iter().enumerate() {
-            debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
-            let new_cluster_bomb = ClusterBomb {
-                market: &key,
-                min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
-                float_one: value[idx*2],
-                float_two: value[(idx*2)+1],
-                group: *kg
-            };
-            println!("{}", new_cluster_bomb);
-            wtr.serialize(new_cluster_bomb)?;
-
-        }
-    }
 
 
-
-    if market_vectors_triple.is_empty() {
-        warn!("I really cannot say.");
-    }                    
-    for (key,value) in market_vectors_triple {
-        info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
-        let km_for_v_triple = do_triple_kmeans(&value);                    
-        debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
-        for (idx, kg) in km_for_v_triple.iter().enumerate() {
-            debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
-            let new_cluster_bomb = ClusterBombTriple {
-                market: &key,
-                min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
-                minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
-                float_one: value[idx*3],
-                float_two: value[(idx*3)+1],
-                float_three: value[(idx*3)+2],
-                group: *kg
-            };
-            println!("{}", new_cluster_bomb);
-            wtr3.serialize(new_cluster_bomb)?;
-
-        }
-    }
-
-    wtr.flush()?;
-    wtr3.flush()?;
-    Ok(())
 
 }
+
 
 pub enum DYDXM {
     TLDYDXMarket(TLDYDXMarket),
