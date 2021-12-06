@@ -3,7 +3,7 @@ use crate::*;
 use bson::serde_helpers::chrono_datetime_as_bson_datetime;
 use std::time::Duration as HackDuration;
 use std::collections::HashMap;
-use self::models::TimeRange;
+use utils::TimeRange;
 use serde::{Serialize,Deserialize};
 //use mongodb::{bson::doc};
 use std::fmt; // Import `fmt`
