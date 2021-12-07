@@ -9,6 +9,8 @@ use dotenv::dotenv;
 pub struct Config {
 	pub local_mongo: String,
 	pub tldb: String,
+	pub api_secret: String,
+	pub api_token: String
 }
 
 impl Config {
