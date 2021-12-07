@@ -39,16 +39,6 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 } 
 
 
-// /// Clean up the mongo db - generally, you wouldn't call this unless you're in fits and starts and debugging.
-// pub async fn delete_dydx_data_in_mongo() -> Result<(), Box<dyn Error>>{
-
-//     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-//     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-//     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
-//     dydxcol.delete_many(doc!{}, None).await?;    
-//     Ok(())
-
-// }
 
 /// Processes all dydx pairs, which means, every second, gets the quotes, and writes them to a Kafka topic (which must exist).
 /// The broker, topic, and if we add mongo, those should be moved to env variables.  There are some hardcoded stops, which are just dumb.
