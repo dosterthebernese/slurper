@@ -58,6 +58,7 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
 
     // you could fix this size 
     let mut trailing_prices: HashMap<String, Vec<f64>> = HashMap::new(); 
+    let mut trailing_open_interest: HashMap<String, Vec<f64>> = HashMap::new(); 
 
     let mut tmpcnt = 0;
     loop {
@@ -79,12 +80,22 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
             let oracle_price = item.oracle_price.parse::<f64>().unwrap();
             let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
 
+            let open_interest = item.open_interest.parse::<f64>().unwrap();
+
             trailing_prices.entry(item.market.to_string()).or_insert(Vec::new()).push(index_price);                        
             // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
             if trailing_prices[&item.market].len() > 600 {
                 trailing_prices.get_mut(&item.market).unwrap().remove(0);                    
                 assert_eq!(trailing_prices[&item.market].len(), 600);
             }
+
+            trailing_open_interest.entry(item.market.to_string()).or_insert(Vec::new()).push(open_interest);                        
+            // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
+            if trailing_open_interest[&item.market].len() > 600 {
+                trailing_open_interest.get_mut(&item.market).unwrap().remove(0);                    
+                assert_eq!(trailing_open_interest[&item.market].len(), 600);
+            }
+
 
             let tl_derived_price_change_5s = get_interval_performance(index_price,5,&item.market,&trailing_prices);
             let tl_derived_price_change_10s = get_interval_performance(index_price,10,&item.market,&trailing_prices);
@@ -98,6 +109,12 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
             let tl_derived_price_mean_1m = get_interval_mean(60,&item.market,&trailing_prices); // not weighted
             let tl_derived_price_mean_5m = get_interval_mean(300,&item.market,&trailing_prices); // not weighted
             let tl_derived_price_mean_10m = get_interval_mean(600,&item.market,&trailing_prices); // not weighted
+            let tl_derived_open_interest_change_5s = get_interval_performance(open_interest,5,&item.market,&trailing_open_interest);
+            let tl_derived_open_interest_change_10s = get_interval_performance(open_interest,10,&item.market,&trailing_open_interest);
+            let tl_derived_open_interest_change_30s = get_interval_performance(open_interest,30,&item.market,&trailing_open_interest);
+            let tl_derived_open_interest_change_1m = get_interval_performance(open_interest,60,&item.market,&trailing_open_interest);
+            let tl_derived_open_interest_change_5m = get_interval_performance(open_interest,300,&item.market,&trailing_open_interest);
+            let tl_derived_open_interest_change_10m = get_interval_performance(open_interest,600,&item.market,&trailing_open_interest);
 
 
             let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
@@ -111,7 +128,6 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
             let incremental_initial_margin_fraction = item.incremental_initial_margin_fraction.parse::<f64>().unwrap();
             let volume_24h = item.volume_24h.parse::<f64>().unwrap();
             let trades_24h = item.trades_24h.parse::<f64>().unwrap();
-            let open_interest = item.open_interest.parse::<f64>().unwrap();
             let max_position_size = item.max_position_size.parse::<f64>().unwrap();
             let asset_resolution = item.asset_resolution.parse::<f64>().unwrap();
 
@@ -140,6 +156,12 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
                 tl_derived_price_mean_1m: tl_derived_price_mean_1m,
                 tl_derived_price_mean_5m: tl_derived_price_mean_5m,
                 tl_derived_price_mean_10m: tl_derived_price_mean_10m,
+                tl_derived_open_interest_change_5s: tl_derived_open_interest_change_5s,
+                tl_derived_open_interest_change_10s: tl_derived_open_interest_change_10s,
+                tl_derived_open_interest_change_30s: tl_derived_open_interest_change_30s,
+                tl_derived_open_interest_change_1m: tl_derived_open_interest_change_1m,
+                tl_derived_open_interest_change_5m: tl_derived_open_interest_change_5m,
+                tl_derived_open_interest_change_10m: tl_derived_open_interest_change_10m,
                 next_funding_rate: next_funding_rate,
                 next_funding_at: item.next_funding_at,
                 min_order_size: min_order_size,
@@ -293,7 +315,7 @@ impl IOVolPerf {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
-    pub async fn index_oracle_volatility<'a>(self: &Self, dfile: &'a str, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+    pub async fn index_oracle_price_volatility<'a>(self: &Self, dfile: &'a str, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
         let mut wtr = Writer::from_path(dfile)?;
         let mut wtr3 = Writer::from_path(tfile)?;
@@ -402,6 +424,80 @@ impl IOVolPerf {
 
 
 
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
+    pub async fn open_interest_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+
+        let mut wtr3 = Writer::from_path(tfile)?;
+        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut min_quote_date = Utc::now();
+        let mut max_quote_date = Utc::now();
+        let mut cnt = 0;
+
+        for des_tldm in self.get_range_of_quotes(dydxcol).await? {
+
+            cnt += 1;
+            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+            
+            if min_quote_date > quote_date {
+                min_quote_date = quote_date;
+            }
+            if max_quote_date < quote_date {
+                max_quote_date = quote_date;
+            }
+
+            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
+                if let Some(snaps) = vfut {
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.open_interest);
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                    let fut_index_price = snaps[snaps.len()-1].index_price;
+                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                }
+
+            }
+
+            debug!("{} {}", market_vectors_triple.len(), cnt);
+
+        }
+
+
+        if market_vectors_triple.is_empty() {
+            warn!("I really cannot say.");
+        }                    
+        for (key,value) in market_vectors_triple {
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+            let km_for_v_triple = do_triple_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_triple.iter().enumerate() {
+                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+                let new_cluster_bomb = ClusterBombTriple {
+                    market: &key,
+                    min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                    float_one: value[idx*3],
+                    float_two: value[(idx*3)+1],
+                    float_three: value[(idx*3)+2],
+                    group: *kg
+                };
+                println!("{}", new_cluster_bomb);
+                wtr3.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+        wtr3.flush()?;
+        Ok(())
+
+    }
+
+
+
+
 
 }
 
@@ -465,6 +561,12 @@ pub struct TLDYDXMarket {
     pub tl_derived_price_mean_1m: Option<f64>,
     pub tl_derived_price_mean_5m: Option<f64>,
     pub tl_derived_price_mean_10m: Option<f64>,
+    pub tl_derived_open_interest_change_5s: Option<f64>,
+    pub tl_derived_open_interest_change_10s: Option<f64>,
+    pub tl_derived_open_interest_change_30s: Option<f64>,
+    pub tl_derived_open_interest_change_1m: Option<f64>,
+    pub tl_derived_open_interest_change_5m: Option<f64>,
+    pub tl_derived_open_interest_change_10m: Option<f64>,
     pub next_funding_rate: f64,
     pub next_funding_at: String,
     pub min_order_size: f64,

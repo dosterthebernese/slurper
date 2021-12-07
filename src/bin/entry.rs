@@ -1,16 +1,4 @@
-//! The entry point for interacting with the dydx, and phemex exchange.  Invoke the main by calling the program with an option: 
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry all-markets-dydx
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry consume-dydx
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry index-oracle-vol-dydx
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry clean-dydx
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry gap-analysis-dydx
-//!
-//! RUST_LOG=DEBUG cargo run --bin entry account-phemex
+//! The entry point for interacting with the dydx, and phemex exchange.  Invoke the main by calling the program with an option - see the program. 
 //!
 //! Known shittiness: the all-markets call dies after about 12 hours.  The consumer probably could also write the data to mongo, and truncate the kafka partition post consumption.collection
 //!
@@ -144,13 +132,22 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
 
-        "index-oracle-vol-dydx" => {
+        "iopv-dydx" => {
             let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
             let iopv = dydx::IOVolPerf {
                 gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
                 snap_count: 180,
             };
-            iopv.index_oracle_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple.csv",&dydxcol).await?
+            iopv.index_oracle_price_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple.csv",&dydxcol).await?
+        },
+
+        "oipv-dydx" => {
+            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+            let iopv = dydx::IOVolPerf {
+                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                snap_count: 180,
+            };
+            iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
         },
 
         "all-markets-dydx" => dydx::process_all_markets().await?,
