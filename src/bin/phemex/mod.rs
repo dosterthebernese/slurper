@@ -169,114 +169,143 @@ pub async fn poc2() -> Result<(), Box<dyn Error>> {
 }
 
 
-/// I have token and secret backwards, maybe - this shit works, I think we need to re label the env file and how we use, but whatever.
-pub async fn poc<'a>(api_secret: &'a str, api_token: &'a str) -> Result<(), Box<dyn Error>> {
+/// Use the default constructor which uses env files, I leave the members private.  You might need to rethink this if many different users on same system.
+#[derive(Debug, Clone)]
+pub struct PhemexAuth {
+    phemex_id: String, // secret, probably not correctly labelled
+    phemex_token: String // i mean it is a token, but in the function to sha, it's fed to make the key
+}
 
-    info!("this queries all positions in account");
-    let exp = (Utc::now() + NormalDuration::milliseconds(10000)).timestamp();
-    let expstr = &exp.to_string();            
+impl PhemexAuth {
+    pub async fn get_balances(self: &Self) -> Result<(), Box<dyn Error>> {
 
-    let request_url = format!("{}",phemex::ACCOUNT_POSTIONS_URL);
-    let msg = format!("{}{}", ACCOUNT_POSTIONS_MSG,&expstr);
+        info!("this queries all positions in account");
+        let exp = (Utc::now() + NormalDuration::milliseconds(10000)).timestamp();
+        let expstr = &exp.to_string();            
 
-    let mut signed_key = Hmac::<Sha256>::new_from_slice(api_token.as_bytes()).unwrap();
-    signed_key.update(msg.as_bytes());
-    let signature = hex_encode(signed_key.finalize().into_bytes());            
+        let request_url = format!("{}",phemex::ACCOUNT_POSTIONS_URL);
+        let msg = format!("{}{}", ACCOUNT_POSTIONS_MSG,&expstr);
 
-    let client = reqwest::Client::builder().build()?;
-    let response = client.get(&request_url).header("x-phemex-access-token", api_secret).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).send().await?;
-    let payload: PhemexDataWrapperAccount = response.json().await?;
-    debug!("{:?}", payload);
-    match payload.data {
-        Some(d) => {
-            for p in d.positions {
-                println!("{}", p);           
-                let perps = get_perpetuals().await;
-                let contract_size = perps.unwrap()[&p.symbol].contract_size;
-                let current_md = get_market_data(&p.symbol).await?;
-                let current_market_price = current_md.mark_price as f64 / 10000.00;
-                debug!("current market price is: {}", current_market_price);
-            //                let pos = (p.size as f64 * contract_size) * p.mark_price;
-                let pos = (p.size as f64 * contract_size) * current_market_price;
-                let upl = if p.side == "Buy" {
-                    ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
-                } else {
-                    ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
-                };
+        let mut signed_key = Hmac::<Sha256>::new_from_slice(&self.phemex_token.as_bytes()).unwrap();
+        signed_key.update(msg.as_bytes());
+        let signature = hex_encode(signed_key.finalize().into_bytes());            
 
-            }
-        },
-        _ => {warn!("nothing found")}
-    };
+        let client = reqwest::Client::builder().build()?;
+        let response = client.get(&request_url).header("x-phemex-access-token", &self.phemex_id).header("x-phemex-request-expiry", exp).header("x-phemex-request-signature", signature).send().await?;
+        let payload: PhemexDataWrapperAccount = response.json().await?;
+        debug!("{:?}", payload);
+        match payload.data {
+            Some(d) => {
+                for p in d.positions {
+                    println!("{}", p);           
+                    let perps = get_perpetuals().await;
+                    let contract_size = perps.unwrap()[&p.symbol].contract_size;
+                    let current_md = get_market_data(&p.symbol).await?;
+                    let current_market_price = current_md.mark_price as f64 / 10000.00;
+                    debug!("current market price is: {}", current_market_price);
+                //                let pos = (p.size as f64 * contract_size) * p.mark_price;
+                    let _pos = (p.size as f64 * contract_size) * current_market_price;
+                    let _upl = if p.side == "Buy" {
+                        ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
+                    } else {
+                        ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
+                    };
 
-
-
-    // for p in payload.data.unwrap().positions {
-    //     println!("{}", p);           
-    //     let perps = get_perpetuals().await;
-    //     let contract_size = perps.unwrap()[&p.symbol].contract_size;
-    //     let current_md = get_market_data(&p.symbol).await?;
-    //     let current_market_price = current_md.mark_price as f64 / 10000.00;
-    //     debug!("current market price is: {}", current_market_price);
-    // //                let pos = (p.size as f64 * contract_size) * p.mark_price;
-    //     let pos = (p.size as f64 * contract_size) * current_market_price;
-    //     let upl = if p.side == "Buy" {
-    //         ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
-    //     } else {
-    //         ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
-    //     };
-
-    // // inverse?                    ((p.size as f64 / contract_size) / p.avg_entry_price) - ((p.size as f64 * contract_size) / current_market_price)                    
-
-    //     debug!("{:?} {:?} {:?}      the open interest is {:?}", pos, upl, pos+upl, current_md.open_interest);
-
-    //     // let new_tlphsnap = TLPhemexMDSnapshot {
-    //     //     snapshot_date: Utc::now(),
-    //     //     symbol: p.symbol,
-    //     //     open: current_md.open,
-    //     //     high: current_md.high,
-    //     //     low: current_md.low,
-    //     //     close: current_md.close,
-    //     //     index_price: current_md.index_price,
-    //     //     mark_price: current_md.mark_price,
-    //     //     open_interest: current_md.open_interest
-    //     // };
-
-    //     // println!("{}", new_tlphsnap);
-    //     // let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                
-    //     // let tlphsnhist = new_tlphsnap.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
-
-    //     // let disasf_prices = delta_walk_integers(&tlphsnhist.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
-    //     // let disasf_open_interest = delta_walk_integers(&tlphsnhist.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
-    //     // let its_snapshots = interval_walk_timestamps(&tlphsnhist.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
-
-    //     // for (idx, q) in tlphsnhist.iter().enumerate() {
-    //     //     println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
-    //     // }
-
-    //     // debug!("open interest delta {:?}", &new_tlphsnap.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
-    //     // debug!("mark price delta {:?}", &new_tlphsnap.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
-
-    //     // let lh = &new_tlphsnap.get_liquidations(&LOOKBACK_OPEN_INTEREST, &lcollection).await?;
-    //     // let new_trades = Trades {
-    //     //     vts: lh.clone()
-    //     // };
-
-    //     // debug!("total volume of liquidations for the last 26 hours is: {}", new_trades.get_total_volume().unwrap());
-    //     // let (p,q,pq,rkm) = new_trades.get_pqkm().unwrap();
-
-    //     // for (idx, km) in rkm.iter().enumerate() {
-    //     //     debug!("{:?} {:?} {:?}", p[idx],q[idx],km);
-    //     // }
+                }
+            },
+            _ => {warn!("nothing found")}
 
 
-    // }
+        };
 
+        Ok(())
 
-    Ok(())
-
+    }
 
 }
+
+/// ID and Token (or Secret and Token) all fucked up.  But it works !
+impl Default for PhemexAuth {
+    fn default() -> Self {
+        Self { 
+            phemex_id: Config::from_env().expect("Server configuration").api_secret,
+            phemex_token: Config::from_env().expect("Server configuration").api_token,
+        }
+    }
+}
+
+
+
+// /// I have token and secret backwards, maybe - this shit works, I think we need to re label the env file and how we use, but whatever.
+// pub async fn poc<'a>(api_secret: &'a str, api_token: &'a str) -> Result<(), Box<dyn Error>> {
+
+
+//     // for p in payload.data.unwrap().positions {
+//     //     println!("{}", p);           
+//     //     let perps = get_perpetuals().await;
+//     //     let contract_size = perps.unwrap()[&p.symbol].contract_size;
+//     //     let current_md = get_market_data(&p.symbol).await?;
+//     //     let current_market_price = current_md.mark_price as f64 / 10000.00;
+//     //     debug!("current market price is: {}", current_market_price);
+//     // //                let pos = (p.size as f64 * contract_size) * p.mark_price;
+//     //     let pos = (p.size as f64 * contract_size) * current_market_price;
+//     //     let upl = if p.side == "Buy" {
+//     //         ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
+//     //     } else {
+//     //         ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
+//     //     };
+
+//     // // inverse?                    ((p.size as f64 / contract_size) / p.avg_entry_price) - ((p.size as f64 * contract_size) / current_market_price)                    
+
+//     //     debug!("{:?} {:?} {:?}      the open interest is {:?}", pos, upl, pos+upl, current_md.open_interest);
+
+//     //     // let new_tlphsnap = TLPhemexMDSnapshot {
+//     //     //     snapshot_date: Utc::now(),
+//     //     //     symbol: p.symbol,
+//     //     //     open: current_md.open,
+//     //     //     high: current_md.high,
+//     //     //     low: current_md.low,
+//     //     //     close: current_md.close,
+//     //     //     index_price: current_md.index_price,
+//     //     //     mark_price: current_md.mark_price,
+//     //     //     open_interest: current_md.open_interest
+//     //     // };
+
+//     //     // println!("{}", new_tlphsnap);
+//     //     // let _result = tlphsnapcollection.insert_one(&new_tlphsnap, None).await?;                                                                
+//     //     // let tlphsnhist = new_tlphsnap.get_history(&LOOKBACK_OPEN_INTEREST,&tlphsnapcollection).await?;
+
+//     //     // let disasf_prices = delta_walk_integers(&tlphsnhist.iter().map(|n| n.mark_price).collect::<Vec<i64>>());
+//     //     // let disasf_open_interest = delta_walk_integers(&tlphsnhist.iter().map(|n| n.open_interest).collect::<Vec<i64>>());
+//     //     // let its_snapshots = interval_walk_timestamps(&tlphsnhist.iter().map(|n| n.snapshot_date).collect::<Vec<DateTime<Utc>>>());
+
+//     //     // for (idx, q) in tlphsnhist.iter().enumerate() {
+//     //     //     println!("{} {:>9.4} {:>9.4} {}", q, disasf_prices[idx], disasf_open_interest[idx], its_snapshots[idx]);
+//     //     // }
+
+//     //     // debug!("open interest delta {:?}", &new_tlphsnap.get_open_interest_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+//     //     // debug!("mark price delta {:?}", &new_tlphsnap.get_mark_price_delta(&LOOKBACK_OPEN_INTEREST, &tlphsnapcollection).await?);
+
+//     //     // let lh = &new_tlphsnap.get_liquidations(&LOOKBACK_OPEN_INTEREST, &lcollection).await?;
+//     //     // let new_trades = Trades {
+//     //     //     vts: lh.clone()
+//     //     // };
+
+//     //     // debug!("total volume of liquidations for the last 26 hours is: {}", new_trades.get_total_volume().unwrap());
+//     //     // let (p,q,pq,rkm) = new_trades.get_pqkm().unwrap();
+
+//     //     // for (idx, km) in rkm.iter().enumerate() {
+//     //     //     debug!("{:?} {:?} {:?}", p[idx],q[idx],km);
+//     //     // }
+
+
+//     // }
+
+
+//     Ok(())
+
+
+// }
 
 
 

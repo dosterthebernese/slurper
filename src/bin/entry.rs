@@ -106,9 +106,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
 
         "account-phemex" => {
-            let api_secret = &Config::from_env().expect("Server configuration").api_secret;
-            let api_token = &Config::from_env().expect("Server configuration").api_token;
-            phemex::poc(&api_secret,&api_token).await?;
+            phemex::PhemexAuth::default().get_balances().await?;
         },
 
         "select-markets-phemex" => phemex::poc2().await?,
