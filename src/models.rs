@@ -24,6 +24,7 @@ use std::fmt; // Import `fmt`
 use std::fmt::Error as NormalError;
 
 
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClusterBomb<'a> {
     pub market: &'a str,

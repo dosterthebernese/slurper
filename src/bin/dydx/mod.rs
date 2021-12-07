@@ -18,6 +18,7 @@ const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
 
 
 
+
 /// This is used to fetch all dydx asset pairs. It returns a vector of markets, which I usually then use to have an async / await pool that run in parallel - you can see this in other modules. Seemed like overkill here. 
 pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
@@ -197,83 +198,88 @@ pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
 }
 
 
+/// So you have the general Kafka Details and Mongo details in the KafkaMongo struct, and you add the Mongo target, and call consume.  Should be a trait.
+pub struct KMDYDX<'a> {
+    pub km: utils::KafkaMongo<'a, >,
+    pub dydxcol: mongodb::Collection::<TLDYDXMarket>
+}
+
+impl KMDYDX<'_> {
+
+    /// This will iterate all messages in the kafka topic dydx-markets, and and write to mongo (with a date lookup that needs refactoring).
+    pub async fn consume(self: &Self) -> Result<(), Box<dyn Error>> {
 
 
-/// This will iterate all messages in the kafka topic dydx-markets, and and write to mongo (with a date lookup that needs refactoring).
-pub async fn consume_dydx_topic() -> Result<(), Box<dyn Error>> {
+        let brokers = vec![self.km.k.broker.to_owned()];
+
+        let mut max_market_date_hm = HashMap::new();
+        for dydxm in get_markets().await? {
+            let edydxm = DYDXM::DYDXMarket(dydxm.clone());
+            let last_updated = edydxm.get_last_migrated_from_kafka(&self.dydxcol).await?;
+            max_market_date_hm.entry(dydxm.market.clone()).or_insert(last_updated);                
+        }
 
 
-    let broker = "localhost:9092";
-    let brokers = vec![broker.to_owned()];
-    let topic = "dydx-markets";
+        let mut con = Consumer::from_hosts(brokers)
+            .with_topic(self.km.k.topic.to_string())
+    //                .with_group(group)
+            .with_fallback_offset(FetchOffset::Earliest)
+    //        .with_fallback_offset(FetchOffset::Latest)
+            .with_offset_storage(GroupOffsetStorage::Kafka)
+            .create()?;
 
-    let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-    let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
+        let mut cnt: i64 = 0;
+        let mut mcnt: i64 = 0;
+        let mut min_quote_date = Utc::now();
+        let mut max_quote_date = Utc::now();
 
+        loop {
+            let mss = con.poll()?;
+            if mss.is_empty() {
+                info!("Processed {} messages (only {} mongo valid) for range {} to {} which is {} minutes.", cnt, mcnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
+                return Ok(());
+            }
 
-    let mut max_market_date_hm = HashMap::new();
-    for dydxm in get_markets().await? {
-        let edydxm = DYDXM::DYDXMarket(dydxm.clone());
-        let last_updated = edydxm.get_last_migrated_from_kafka(&dydxcol).await?;
-        max_market_date_hm.entry(dydxm.market.clone()).or_insert(last_updated);                
+            for ms in mss.iter() {
+                for m in ms.messages() {
+                    let mut buf = Vec::with_capacity(1024);
+                    //println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
+                    buf.extend_from_slice(m.value);
+                    buf.push(b'\n');                        
+                    let cb =  str::from_utf8(&buf).unwrap();
+                    let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
+                    println!("{}", des_tldm);
+
+                    debug!("date comp for {} {} {}", des_tldm.market, max_market_date_hm[&des_tldm.market], des_tldm.mongo_snapshot_date);
+                    if max_market_date_hm[&des_tldm.market] < des_tldm.mongo_snapshot_date {
+                        debug!("Saving to Mongo");
+                        let _result = &self.dydxcol.insert_one(&des_tldm, None).await?;                                                                                                    
+                        mcnt += 1;
+                    }
+
+                    cnt += 1;
+                    let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+                    
+                    if min_quote_date > quote_date {
+                        min_quote_date = quote_date;
+                    }
+                    if max_quote_date < quote_date {
+                        max_quote_date = quote_date;
+                    }
+
+                }
+                let _ = con.consume_messageset(ms);
+            }
+            con.commit_consumed()?;
+        }   
+
     }
 
 
-    let mut con = Consumer::from_hosts(brokers)
-        .with_topic(topic.to_string())
-//                .with_group(group)
-        .with_fallback_offset(FetchOffset::Earliest)
-//        .with_fallback_offset(FetchOffset::Latest)
-        .with_offset_storage(GroupOffsetStorage::Kafka)
-        .create()?;
 
-    let mut cnt: i64 = 0;
-    let mut mcnt: i64 = 0;
-    let mut min_quote_date = Utc::now();
-    let mut max_quote_date = Utc::now();
-
-    loop {
-        let mss = con.poll()?;
-        if mss.is_empty() {
-            info!("Processed {} messages (only {} mongo valid) for range {} to {} which is {} minutes.", cnt, mcnt, min_quote_date, max_quote_date, max_quote_date.signed_duration_since(min_quote_date).num_minutes());
-            return Ok(());
-        }
-
-        for ms in mss.iter() {
-            for m in ms.messages() {
-                let mut buf = Vec::with_capacity(1024);
-                //println!("{}:{}@{}: {:?}", ms.topic(), ms.partition(), m.offset, m.value);
-                buf.extend_from_slice(m.value);
-                buf.push(b'\n');                        
-                let cb =  str::from_utf8(&buf).unwrap();
-                let des_tldm: TLDYDXMarket = serde_json::from_str(cb).unwrap();
-                println!("{}", des_tldm);
-
-                debug!("date comp for {} {} {}", des_tldm.market, max_market_date_hm[&des_tldm.market], des_tldm.mongo_snapshot_date);
-                if max_market_date_hm[&des_tldm.market] < des_tldm.mongo_snapshot_date {
-                    debug!("Saving to Mongo");
-                    let _result = dydxcol.insert_one(&des_tldm, None).await?;                                                                                                    
-                    mcnt += 1;
-                }
-
-                cnt += 1;
-                let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-                
-                if min_quote_date > quote_date {
-                    min_quote_date = quote_date;
-                }
-                if max_quote_date < quote_date {
-                    max_quote_date = quote_date;
-                }
-
-            }
-            let _ = con.consume_messageset(ms);
-        }
-        con.commit_consumed()?;
-    }   
 
 }
+
 
 pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Box<MongoError>> {
     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;

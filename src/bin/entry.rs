@@ -70,6 +70,23 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
 
+    let ms = utils::MongoSpecs {
+        client: &client,
+        database: &database,
+    };
+
+    let ks_dydx = utils::KafkaSpecs {
+        broker: Config::from_env().expect("Server configuration").local_kafka_broker,
+        topic: "dydx-markets".to_string()
+    };
+
+    let km_dydx = utils::KafkaMongo {
+        k: ks_dydx,
+        m: ms
+    };
+
+
+
     match matches.value_of("INPUT").unwrap() {
 
         "poc" => {
@@ -105,7 +122,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             tr.delete_exact_range_tldydxmarket(&dydxcol).await?
         },
 
-        "consume-dydx" => dydx::consume_dydx_topic().await?,
+        "consume-dydx" => {
+
+            let kmdydx = dydx::KMDYDX {
+                km: km_dydx,
+                dydxcol: database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION)
+            };
+
+            kmdydx.consume().await?;
+        },
         
         "gap-analysis-dydx" => {
             let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            

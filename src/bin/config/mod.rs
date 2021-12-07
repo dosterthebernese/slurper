@@ -9,6 +9,7 @@ use dotenv::dotenv;
 pub struct Config {
 	pub local_mongo: String,
 	pub tldb: String,
+	pub local_kafka_broker: String,
 	pub api_secret: String,
 	pub api_token: String
 }
