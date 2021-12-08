@@ -81,7 +81,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let km_dydx = utils::KafkaMongo {
-        k: ks_dydx,
+        k: ks_dydx.clone(),
         m: ms
     };
 
@@ -159,7 +159,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "iopv-dydx" => {
             let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
-            let iopv = dydx::IOVolPerf {
+            let iopv = dydx::ClusterConfiguration {
                 gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
                 snap_count: 180,
             };
@@ -168,14 +168,34 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "oipv-dydx" => {
             let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
-            let iopv = dydx::IOVolPerf {
+            let iopv = dydx::ClusterConfiguration {
                 gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
                 snap_count: 180,
             };
             iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
         },
 
-        "all-markets-dydx" => dydx::process_all_markets().await?,
+        "nfrpv-dydx" => {
+            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+            let iopv = dydx::ClusterConfiguration {
+                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                snap_count: 180,
+            };
+            iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
+        },
+
+        "all-markets-dydx" => {
+
+            let kdydx = dydx::KDYDX {
+                k: ks_dydx.clone(),
+                lookback: 600,
+                frequency: 1000,
+                cap: 1000000,
+            };
+
+            kdydx.process_all_markets().await?;
+        },
+
         _ => error!("Unrecognized input parm."),
     }
 

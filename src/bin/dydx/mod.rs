@@ -41,161 +41,179 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
 
 
 
-/// Processes all dydx pairs, which means, every second, gets the quotes, and writes them to a Kafka topic (which must exist).
-/// The broker, topic, and if we add mongo, those should be moved to env variables.  There are some hardcoded stops, which are just dumb.
-pub async fn process_all_markets() -> Result<(), Box<dyn Error>> {
 
-    let broker = "localhost:9092";
-    let topic = "dydx-markets";
+/// A little bit unecessary as the lookback is forced to match the 10 min cap back / forward, but we can refactor that at some point, making those values
+/// and array in Mongo, vs multiple fields.
+pub struct KDYDX {
+    pub k: utils::KafkaSpecs,
+    pub lookback: usize,
+    pub frequency: u64,
+    pub cap: i64,
 
-    let mut producer = Producer::from_hosts(vec![broker.to_owned()])
-        .with_ack_timeout(HackDuration::from_secs(1))
-        .with_required_acks(RequiredAcks::One)
-        .create()?;
+}
 
+impl KDYDX {
 
-    info!("this process should be daemonized");
-    let mut interval = TokioTime::interval(TokioDuration::from_millis(1000));
+    /// Processes all dydx pairs, which means, every second, gets the quotes, and writes them to a Kafka topic (which must exist).
+    /// The broker, topic, and if we add mongo, those should be moved to env variables.  There are some hardcoded stops, which are just dumb.
+    pub async fn process_all_markets(self: &Self) -> Result<(), Box<dyn Error>> {
 
-    // you could fix this size 
-    let mut trailing_prices: HashMap<String, Vec<f64>> = HashMap::new(); 
-    let mut trailing_open_interest: HashMap<String, Vec<f64>> = HashMap::new(); 
+        let brokers = vec![self.k.broker.to_owned()];
 
-    let mut tmpcnt = 0;
-    loop {
-        if tmpcnt == 1000000 {
-            break;
-        } else {
-            tmpcnt+=1;
-        }
+        let mut producer = Producer::from_hosts(brokers)
+            .with_ack_timeout(HackDuration::from_secs(1))
+            .with_required_acks(RequiredAcks::One)
+            .create()?;
 
 
+        info!("this process should be daemonized");
+        let mut interval = TokioTime::interval(TokioDuration::from_millis(self.frequency));
 
+        // you could fix this size 
+        let mut trailing_prices: HashMap<String, Vec<f64>> = HashMap::new(); 
+        let mut trailing_open_interest: HashMap<String, Vec<f64>> = HashMap::new(); 
 
-    // An example, of how to wrap:
-    // let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(item)).collect();
-
-        for item in dydx::get_markets().await.unwrap() {
-
-            let index_price = item.index_price.parse::<f64>().unwrap();
-            let oracle_price = item.oracle_price.parse::<f64>().unwrap();
-            let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
-
-            let open_interest = item.open_interest.parse::<f64>().unwrap();
-
-            trailing_prices.entry(item.market.to_string()).or_insert(Vec::new()).push(index_price);                        
-            // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
-            if trailing_prices[&item.market].len() > 600 {
-                trailing_prices.get_mut(&item.market).unwrap().remove(0);                    
-                assert_eq!(trailing_prices[&item.market].len(), 600);
-            }
-
-            trailing_open_interest.entry(item.market.to_string()).or_insert(Vec::new()).push(open_interest);                        
-            // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
-            if trailing_open_interest[&item.market].len() > 600 {
-                trailing_open_interest.get_mut(&item.market).unwrap().remove(0);                    
-                assert_eq!(trailing_open_interest[&item.market].len(), 600);
+        let mut tmpcnt = 0;
+        loop {
+            if tmpcnt == self.cap {
+                break;
+            } else {
+                tmpcnt+=1;
             }
 
 
-            let tl_derived_price_change_5s = get_interval_performance(index_price,5,&item.market,&trailing_prices);
-            let tl_derived_price_change_10s = get_interval_performance(index_price,10,&item.market,&trailing_prices);
-            let tl_derived_price_change_30s = get_interval_performance(index_price,30,&item.market,&trailing_prices);
-            let tl_derived_price_change_1m = get_interval_performance(index_price,60,&item.market,&trailing_prices);
-            let tl_derived_price_change_5m = get_interval_performance(index_price,300,&item.market,&trailing_prices);
-            let tl_derived_price_change_10m = get_interval_performance(index_price,600,&item.market,&trailing_prices);
-            let tl_derived_price_vol_1m = get_interval_volatility(60,&item.market,&trailing_prices);
-            let tl_derived_price_vol_5m = get_interval_volatility(300,&item.market,&trailing_prices);
-            let tl_derived_price_vol_10m = get_interval_volatility(600,&item.market,&trailing_prices);
-            let tl_derived_price_mean_1m = get_interval_mean(60,&item.market,&trailing_prices); // not weighted
-            let tl_derived_price_mean_5m = get_interval_mean(300,&item.market,&trailing_prices); // not weighted
-            let tl_derived_price_mean_10m = get_interval_mean(600,&item.market,&trailing_prices); // not weighted
-            let tl_derived_open_interest_change_5s = get_interval_performance(open_interest,5,&item.market,&trailing_open_interest);
-            let tl_derived_open_interest_change_10s = get_interval_performance(open_interest,10,&item.market,&trailing_open_interest);
-            let tl_derived_open_interest_change_30s = get_interval_performance(open_interest,30,&item.market,&trailing_open_interest);
-            let tl_derived_open_interest_change_1m = get_interval_performance(open_interest,60,&item.market,&trailing_open_interest);
-            let tl_derived_open_interest_change_5m = get_interval_performance(open_interest,300,&item.market,&trailing_open_interest);
-            let tl_derived_open_interest_change_10m = get_interval_performance(open_interest,600,&item.market,&trailing_open_interest);
 
 
-            let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
-            let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
-            let min_order_size = item.min_order_size.parse::<f64>().unwrap();
+        // An example, of how to wrap:
+        // let dcol: Vec<_> = get_asset_pairs().await.unwrap().into_iter().map(|item| process_trades(item)).collect();
 
-            let initial_margin_fraction = item.initial_margin_fraction.parse::<f64>().unwrap();
-            let maintenance_margin_fraction = item.maintenance_margin_fraction.parse::<f64>().unwrap();
-            let baseline_position_size = item.baseline_position_size.parse::<f64>().unwrap();
-            let incremental_position_size = item.incremental_position_size.parse::<f64>().unwrap();
-            let incremental_initial_margin_fraction = item.incremental_initial_margin_fraction.parse::<f64>().unwrap();
-            let volume_24h = item.volume_24h.parse::<f64>().unwrap();
-            let trades_24h = item.trades_24h.parse::<f64>().unwrap();
-            let max_position_size = item.max_position_size.parse::<f64>().unwrap();
-            let asset_resolution = item.asset_resolution.parse::<f64>().unwrap();
+            for item in dydx::get_markets().await.unwrap() {
 
-            let tlm = TLDYDXMarket {
-                snapshot_date: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-                mongo_snapshot_date: Utc::now(),
-                market: item.market.clone(),
-                status: item.status,
-                base_asset: item.base_asset,
-                quote_asset: item.quote_asset,
-                step_size: item.step_size.parse::<f64>().unwrap(),
-                tick_size: item.tick_size.parse::<f64>().unwrap(),
-                index_price: index_price,
-                oracle_price: oracle_price,
-                tl_derived_index_oracle_spread: tl_derived_index_oracle_spread,
-                price_change_24h: price_change_24h,
-                tl_derived_price_change_5s: tl_derived_price_change_5s,
-                tl_derived_price_change_10s: tl_derived_price_change_10s,
-                tl_derived_price_change_30s: tl_derived_price_change_30s,
-                tl_derived_price_change_1m: tl_derived_price_change_1m,
-                tl_derived_price_change_5m: tl_derived_price_change_5m,
-                tl_derived_price_change_10m: tl_derived_price_change_10m,
-                tl_derived_price_vol_1m: tl_derived_price_vol_1m,
-                tl_derived_price_vol_5m: tl_derived_price_vol_5m,
-                tl_derived_price_vol_10m: tl_derived_price_vol_10m,
-                tl_derived_price_mean_1m: tl_derived_price_mean_1m,
-                tl_derived_price_mean_5m: tl_derived_price_mean_5m,
-                tl_derived_price_mean_10m: tl_derived_price_mean_10m,
-                tl_derived_open_interest_change_5s: tl_derived_open_interest_change_5s,
-                tl_derived_open_interest_change_10s: tl_derived_open_interest_change_10s,
-                tl_derived_open_interest_change_30s: tl_derived_open_interest_change_30s,
-                tl_derived_open_interest_change_1m: tl_derived_open_interest_change_1m,
-                tl_derived_open_interest_change_5m: tl_derived_open_interest_change_5m,
-                tl_derived_open_interest_change_10m: tl_derived_open_interest_change_10m,
-                next_funding_rate: next_funding_rate,
-                next_funding_at: item.next_funding_at,
-                min_order_size: min_order_size,
-                instrument_type: item.instrument_type,
-                initial_margin_fraction: initial_margin_fraction,
-                maintenance_margin_fraction: maintenance_margin_fraction,
-                baseline_position_size: baseline_position_size,
-                incremental_position_size: incremental_position_size,
-                incremental_initial_margin_fraction: incremental_initial_margin_fraction,
-                volume_24h: volume_24h,
-                trades_24h: trades_24h,
-                open_interest: open_interest,
-                max_position_size: max_position_size,
-                asset_resolution: asset_resolution,
-            };
+                let index_price = item.index_price.parse::<f64>().unwrap();
+                let oracle_price = item.oracle_price.parse::<f64>().unwrap();
+                let tl_derived_index_oracle_spread = (index_price - oracle_price) / oracle_price;
 
-            println!("{}", tlm);
-            let data = serde_json::to_string(&tlm).expect("json serialization failed");
-            let data_as_bytes = data.as_bytes();
+                let open_interest = item.open_interest.parse::<f64>().unwrap();
 
-            producer.send(&Record {
-                topic,
-                partition: -1,
-//                key: (),
-                key: item.market,
-                value: data_as_bytes,
-            })?;
+                trailing_prices.entry(item.market.to_string()).or_insert(Vec::new()).push(index_price);                        
+                // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
+                if trailing_prices[&item.market].len() > self.lookback {
+                    trailing_prices.get_mut(&item.market).unwrap().remove(0);                    
+                    assert_eq!(trailing_prices[&item.market].len(), self.lookback);
+                }
+
+                trailing_open_interest.entry(item.market.to_string()).or_insert(Vec::new()).push(open_interest);                        
+                // the max interval is 600 seconds, == 10 mins...so our vectors do not need to grow beyond that
+                if trailing_open_interest[&item.market].len() > self.lookback {
+                    trailing_open_interest.get_mut(&item.market).unwrap().remove(0);                    
+                    assert_eq!(trailing_open_interest[&item.market].len(), self.lookback);
+                }
+
+
+                let tl_derived_price_change_5s = get_interval_performance(index_price,5,&item.market,&trailing_prices);
+                let tl_derived_price_change_10s = get_interval_performance(index_price,10,&item.market,&trailing_prices);
+                let tl_derived_price_change_30s = get_interval_performance(index_price,30,&item.market,&trailing_prices);
+                let tl_derived_price_change_1m = get_interval_performance(index_price,60,&item.market,&trailing_prices);
+                let tl_derived_price_change_5m = get_interval_performance(index_price,300,&item.market,&trailing_prices);
+                let tl_derived_price_change_10m = get_interval_performance(index_price,600,&item.market,&trailing_prices);
+                let tl_derived_price_vol_1m = get_interval_volatility(60,&item.market,&trailing_prices);
+                let tl_derived_price_vol_5m = get_interval_volatility(300,&item.market,&trailing_prices);
+                let tl_derived_price_vol_10m = get_interval_volatility(600,&item.market,&trailing_prices);
+                let tl_derived_price_mean_1m = get_interval_mean(60,&item.market,&trailing_prices); // not weighted
+                let tl_derived_price_mean_5m = get_interval_mean(300,&item.market,&trailing_prices); // not weighted
+                let tl_derived_price_mean_10m = get_interval_mean(600,&item.market,&trailing_prices); // not weighted
+                let tl_derived_open_interest_change_5s = get_interval_performance(open_interest,5,&item.market,&trailing_open_interest);
+                let tl_derived_open_interest_change_10s = get_interval_performance(open_interest,10,&item.market,&trailing_open_interest);
+                let tl_derived_open_interest_change_30s = get_interval_performance(open_interest,30,&item.market,&trailing_open_interest);
+                let tl_derived_open_interest_change_1m = get_interval_performance(open_interest,60,&item.market,&trailing_open_interest);
+                let tl_derived_open_interest_change_5m = get_interval_performance(open_interest,300,&item.market,&trailing_open_interest);
+                let tl_derived_open_interest_change_10m = get_interval_performance(open_interest,600,&item.market,&trailing_open_interest);
+
+
+                let price_change_24h = item.price_change_24h.parse::<f64>().unwrap();
+                let next_funding_rate = item.next_funding_rate.parse::<f64>().unwrap();
+                let min_order_size = item.min_order_size.parse::<f64>().unwrap();
+
+                let initial_margin_fraction = item.initial_margin_fraction.parse::<f64>().unwrap();
+                let maintenance_margin_fraction = item.maintenance_margin_fraction.parse::<f64>().unwrap();
+                let baseline_position_size = item.baseline_position_size.parse::<f64>().unwrap();
+                let incremental_position_size = item.incremental_position_size.parse::<f64>().unwrap();
+                let incremental_initial_margin_fraction = item.incremental_initial_margin_fraction.parse::<f64>().unwrap();
+                let volume_24h = item.volume_24h.parse::<f64>().unwrap();
+                let trades_24h = item.trades_24h.parse::<f64>().unwrap();
+                let max_position_size = item.max_position_size.parse::<f64>().unwrap();
+                let asset_resolution = item.asset_resolution.parse::<f64>().unwrap();
+
+                let tlm = TLDYDXMarket {
+                    snapshot_date: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+                    mongo_snapshot_date: Utc::now(),
+                    market: item.market.clone(),
+                    status: item.status,
+                    base_asset: item.base_asset,
+                    quote_asset: item.quote_asset,
+                    step_size: item.step_size.parse::<f64>().unwrap(),
+                    tick_size: item.tick_size.parse::<f64>().unwrap(),
+                    index_price: index_price,
+                    oracle_price: oracle_price,
+                    tl_derived_index_oracle_spread: tl_derived_index_oracle_spread,
+                    price_change_24h: price_change_24h,
+                    tl_derived_price_change_5s: tl_derived_price_change_5s,
+                    tl_derived_price_change_10s: tl_derived_price_change_10s,
+                    tl_derived_price_change_30s: tl_derived_price_change_30s,
+                    tl_derived_price_change_1m: tl_derived_price_change_1m,
+                    tl_derived_price_change_5m: tl_derived_price_change_5m,
+                    tl_derived_price_change_10m: tl_derived_price_change_10m,
+                    tl_derived_price_vol_1m: tl_derived_price_vol_1m,
+                    tl_derived_price_vol_5m: tl_derived_price_vol_5m,
+                    tl_derived_price_vol_10m: tl_derived_price_vol_10m,
+                    tl_derived_price_mean_1m: tl_derived_price_mean_1m,
+                    tl_derived_price_mean_5m: tl_derived_price_mean_5m,
+                    tl_derived_price_mean_10m: tl_derived_price_mean_10m,
+                    tl_derived_open_interest_change_5s: tl_derived_open_interest_change_5s,
+                    tl_derived_open_interest_change_10s: tl_derived_open_interest_change_10s,
+                    tl_derived_open_interest_change_30s: tl_derived_open_interest_change_30s,
+                    tl_derived_open_interest_change_1m: tl_derived_open_interest_change_1m,
+                    tl_derived_open_interest_change_5m: tl_derived_open_interest_change_5m,
+                    tl_derived_open_interest_change_10m: tl_derived_open_interest_change_10m,
+                    next_funding_rate: next_funding_rate,
+                    next_funding_at: item.next_funding_at,
+                    min_order_size: min_order_size,
+                    instrument_type: item.instrument_type,
+                    initial_margin_fraction: initial_margin_fraction,
+                    maintenance_margin_fraction: maintenance_margin_fraction,
+                    baseline_position_size: baseline_position_size,
+                    incremental_position_size: incremental_position_size,
+                    incremental_initial_margin_fraction: incremental_initial_margin_fraction,
+                    volume_24h: volume_24h,
+                    trades_24h: trades_24h,
+                    open_interest: open_interest,
+                    max_position_size: max_position_size,
+                    asset_resolution: asset_resolution,
+                };
+
+                println!("{}", tlm);
+                let data = serde_json::to_string(&tlm).expect("json serialization failed");
+                let data_as_bytes = data.as_bytes();
+
+                producer.send(&Record {
+                    topic: &self.k.topic,
+                    partition: -1,
+    //                key: (),
+                    key: item.market,
+                    value: data_as_bytes,
+                })?;
+            }
+            interval.tick().await; 
         }
-        interval.tick().await; 
+
+        Ok(())
     }
 
-    Ok(())
+
+
+
 }
+
 
 
 /// So you have the general Kafka Details and Mongo details in the KafkaMongo struct, and you add the Mongo target, and call consume.  Should be a trait.
@@ -298,17 +316,17 @@ pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Bo
 
 }
 
-/// Useful to have a struct for certain variables, as the data would be helpful in rendering to an artifact outside the calcs.  Note that we use a snap count as an i64, vs usual lt date, as it is a reminder of the assumption about the quotes being one second intervals.  You could add an assert that the limit is close to 100 (or equal).  
+/// Useful to have a struct for certain variables, as the data would be helpful in rendering to an artifact outside the calcs.  Note that we use a snap count as an i64, vs usual lt date, as it is a reminder of the assumption about the quotes being one second intervals.  You could add an assert that the limit is close to 100 (or equal).  This should move to utils and become useful for exchanges.  
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IOVolPerf {
+pub struct ClusterConfiguration {
     #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub gtedate: DateTime<Utc>,
     pub snap_count: i64 // I could use the less than model, but this is a reminder that this is a 1 second assumption on each snap
 }
 
-impl IOVolPerf {
+impl ClusterConfiguration {
 
-    pub async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
+    async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
         let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}};
         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
         let mut cursor = dydxcol.find(filter, find_options).await?;
@@ -503,6 +521,79 @@ impl IOVolPerf {
 
 
 
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
+    pub async fn funding_rate_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+
+        let mut wtr3 = Writer::from_path(tfile)?;
+        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut min_quote_date = Utc::now();
+        let mut max_quote_date = Utc::now();
+        let mut cnt = 0;
+
+        for des_tldm in self.get_range_of_quotes(dydxcol).await? {
+
+            cnt += 1;
+            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+            
+            if min_quote_date > quote_date {
+                min_quote_date = quote_date;
+            }
+            if max_quote_date < quote_date {
+                max_quote_date = quote_date;
+            }
+
+            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
+                if let Some(snaps) = vfut {
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.next_funding_rate);
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                    let fut_index_price = snaps[snaps.len()-1].index_price;
+                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                }
+
+            }
+
+            debug!("{} {}", market_vectors_triple.len(), cnt);
+
+        }
+
+
+        if market_vectors_triple.is_empty() {
+            warn!("I really cannot say.");
+        }                    
+        for (key,value) in market_vectors_triple {
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, min_quote_date, max_quote_date);
+            let km_for_v_triple = do_triple_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_triple.iter().enumerate() {
+                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+                let new_cluster_bomb = ClusterBombTriple {
+                    market: &key,
+                    min_date: &min_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &max_quote_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: max_quote_date.signed_duration_since(min_quote_date).num_minutes(),
+                    float_one: value[idx*3],
+                    float_two: value[(idx*3)+1],
+                    float_three: value[(idx*3)+2],
+                    group: *kg
+                };
+                println!("{}", new_cluster_bomb);
+                wtr3.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+        wtr3.flush()?;
+        Ok(())
+
+    }
+
+
+
 
 
 }
@@ -638,7 +729,6 @@ impl fmt::Display for TLDYDXMarket {
     }
 }
 
-
 /// This is the basic object for consuming the endpoint, as the api has most things as Strings
 #[derive(Deserialize, Debug, Clone)]
 pub struct DYDXMarket {
@@ -688,28 +778,6 @@ pub struct DYDXMarket {
     pub asset_resolution: String,
 
 }
-
-// impl DYDXMarket {
-
-    // /// This is used to fetch the TL variants, as the DY variant is what's returned from the get all markets call
-    // pub async fn get_last_migrated_from_kafka<'a>(self: &Self, collection: &Collection<TLDYDXMarket>) -> Result<DateTime<Utc>, MongoError> {
-
-    //     let filter = doc! {"market": &self.market};
-    //     let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":-1}).limit(1).build();
-    //     let mut cursor = collection.find(filter, find_options).await?;
-
-    //     let mut big_bang = chrono::offset::Utc::now();
-    //     big_bang = big_bang - Duration::minutes(600000);
-
-    //     while let Some(cm) = cursor.try_next().await? {
-    //         big_bang = cm.mongo_snapshot_date;
-    //     }
-    //     Ok(big_bang)
-
-    // }
-
-
-// }
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

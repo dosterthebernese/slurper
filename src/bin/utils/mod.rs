@@ -13,29 +13,23 @@ use futures::stream::TryStreamExt;
 use time::Duration;
 
 
+#[derive(Debug, Clone)]
 pub struct KafkaSpecs {
     pub broker: String,
     pub topic: String
 }
 
+#[derive(Debug, Clone)]
 pub struct MongoSpecs<'a> {
     pub client: &'a mongodb::Client,
     pub database: &'a mongodb::Database,
 }
 
+#[derive(Debug, Clone)]
 pub struct KafkaMongo<'a> {
     pub k: KafkaSpecs,
     pub m: MongoSpecs<'a>
 }
-
-
-    // let broker = "localhost:9092";
-    // let brokers = vec![broker.to_owned()];
-    // let topic = "dydx-markets";
-
-    // let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
-    // let database = client.database(&Config::from_env().expect("Server configuration").tldb);
-    // let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);
 
 
 /// Just a helper utility for getting a TimeRange struct passing two strings, and a formatter.
