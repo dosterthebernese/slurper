@@ -92,6 +92,19 @@ pub struct TimeRange {
 
 impl TimeRange {
 
+    // Use this when tracking ranges in an iteration - the self has to be defined as mut to work
+    pub fn adjust(self: &mut TimeRange, d: &DateTime<Utc>) -> bool {        
+        let mut adj = false;
+        if self.gtedate > *d {
+            self.gtedate = *d;
+            adj = true
+        }
+        if self.ltdate < *d {
+            self.ltdate = *d;
+            adj = true
+        }
+        adj
+    }
 
     // Use this for cleanup.  Assuming no data 1000000 (mm) before today.
     pub fn annihilation() -> Self {

@@ -13,6 +13,10 @@ args:
         help: Sets the api call to hit
         required: true
         index: 1
+    - GTEDATE:
+        help: How far back to query from anything touching mongo
+        required: false
+        index: 2
     - verbose:
         short: v
         multiple: true

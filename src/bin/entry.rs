@@ -64,11 +64,12 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     let yaml = load_yaml!("../cmds.yml");
     let matches = App::from_yaml(yaml).get_matches();
-    info!("processing on directive input: {}", matches.value_of("INPUT").unwrap());
+    info!("processing on directive input and optional gtedate: {} {}", matches.value_of("INPUT").unwrap(), matches.value_of("GTEDATE").unwrap_or("<NONE>"));
 
     // almost all use mongo, so declaring for all options
     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+    let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
 
     let ms = utils::MongoSpecs {
         client: &client,
@@ -85,7 +86,15 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         m: ms
     };
 
-
+    let gtedate = match matches.value_of("GTEDATE") {
+        Some(setting) => {
+            match setting {
+                "hour" => Some(3600000),
+                _ => Some(30000000) // 500 minutes                
+            }
+        },
+        _ => None
+    };
 
     match matches.value_of("INPUT").unwrap() {
 
@@ -117,7 +126,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         "select-markets-phemex" => phemex::poc2().await?,
 
         "clean-dydx" => {
-            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
             let tr = utils::TimeRange::annihilation();
             tr.delete_exact_range_tldydxmarket(&dydxcol).await?
         },
@@ -133,7 +141,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
         
         "gap-analysis-dydx" => {
-            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
             let time_ranges = utils::get_time_ranges("2021-12-01 00:00:00","2022-01-01 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
             for otr in &time_ranges{
                 let hourlies = otr.get_hourlies().unwrap();
@@ -157,28 +164,34 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
 
-        "iopv-dydx" => {
-            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+        "iov-dydx" => {
             let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
                 snap_count: 180,
             };
-            iopv.index_oracle_price_volatility("/tmp/cluster_bomb.csv","/tmp/cluster_bomb_triple.csv",&dydxcol).await?
+            iopv.index_oracle_volatility(&dydxcol).await?
+        },
+
+
+        "iopv-dydx" => {
+            let iopv = dydx::ClusterConfiguration {
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
+                snap_count: 180,
+            };
+            iopv.index_oracle_price_volatility("/tmp/cluster_bomb_triple.csv",&dydxcol).await?
         },
 
         "oipv-dydx" => {
-            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
             let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
                 snap_count: 180,
             };
             iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
         },
 
         "nfrpv-dydx" => {
-            let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
             let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(30000000), // 500 minutes
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
                 snap_count: 180,
             };
             iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
