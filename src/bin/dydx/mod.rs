@@ -404,9 +404,11 @@ impl ClusterConfiguration {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
-    pub async fn index_oracle_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+    pub async fn index_oracle_price_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let mut wtr3 = Writer::from_path(tfile)?;
+        let fname = format!("{}{}{}.csv","/tmp/","cluster_bomb_triple_","iopv");
+
+        let mut wtr3 = Writer::from_path(fname)?;
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut tr = utils::TimeRange{
             gtedate: Utc::now(),

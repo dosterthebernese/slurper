@@ -90,7 +90,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         Some(setting) => {
             match setting {
                 "hour" => Some(3600000),
-                _ => Some(30000000) // 500 minutes                
+                "fiver" => Some(30000000), // 500 minutes                
+                "day" => Some(86400000), // 24 hours
+                _ => Some(86400000) // 24 hours
             }
         },
         _ => None
@@ -166,7 +168,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "iov-dydx" => {
             let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), 
                 snap_count: 180,
             };
             iopv.index_oracle_volatility(&dydxcol).await?
@@ -175,10 +177,10 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
         "iopv-dydx" => {
             let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), 
                 snap_count: 180,
             };
-            iopv.index_oracle_price_volatility("/tmp/cluster_bomb_triple.csv",&dydxcol).await?
+            iopv.index_oracle_price_volatility(&dydxcol).await?
         },
 
         "oipv-dydx" => {
