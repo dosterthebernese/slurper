@@ -473,7 +473,7 @@ impl ClusterConfiguration {
 
 
 
-    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (absolute), price (post).
     pub async fn open_interest_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
         let mut wtr3 = Writer::from_path(tfile)?;
@@ -538,6 +538,77 @@ impl ClusterConfiguration {
         Ok(())
 
     }
+
+
+
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
+    pub async fn open_interest_price_volatility_v2<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+
+        let mut wtr3 = Writer::from_path(tfile)?;
+        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut tr = utils::TimeRange{
+            gtedate: Utc::now(),
+            ltdate: Utc::now()
+        };
+
+        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+
+            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
+            
+            tr.adjust(&quote_date);
+
+            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
+                if let Some(snaps) = vfut {
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.));
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                    let fut_index_price = snaps[snaps.len()-1].index_price;
+                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                }
+
+            }
+
+            debug!("{} {}", market_vectors_triple.len(), cnt);
+
+        }
+
+
+        if market_vectors_triple.is_empty() {
+            warn!("I really cannot say.");
+        }                    
+        for (key,value) in market_vectors_triple {
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            let km_for_v_triple = do_triple_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_triple.iter().enumerate() {
+                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+                let new_cluster_bomb = ClusterBombTriple {
+                    market: &key,
+                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    float_one: value[idx*3],
+                    float_two: value[(idx*3)+1],
+                    float_three: value[(idx*3)+2],
+                    group: *kg
+                };
+                println!("{}", new_cluster_bomb);
+                wtr3.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+        wtr3.flush()?;
+        Ok(())
+
+    }
+
+
+
 
 
 

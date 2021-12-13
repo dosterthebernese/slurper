@@ -191,6 +191,14 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
         },
 
+        "oipv-v2-dydx" => {
+            let iopv = dydx::ClusterConfiguration {
+                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
+                snap_count: 180,
+            };
+            iopv.open_interest_price_volatility_v2("/tmp/cluster_bomb_triple_oipv_v2.csv",&dydxcol).await?
+        },
+
         "nfrpv-dydx" => {
             let iopv = dydx::ClusterConfiguration {
                 gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
