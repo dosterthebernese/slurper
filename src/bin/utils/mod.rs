@@ -200,6 +200,20 @@ impl TimeRange {
         Ok(hm)
     }
 
+
+    ///This is used to fetch a trades for a given asset pair.  It's primary use is to retrofit some stats to accompany the already generated images.
+    pub async fn get_trades<'a>(self: &Self, market: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}, "mongo_snapshot_date": {"$lt": self.ltdate}, "market": market};
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+        let mut cursor = dydxcol.find(filter, find_options).await?;
+        let mut rvec: Vec<TLDYDXMarket> = Vec::new(); 
+        while let Some(des_tldm) = cursor.try_next().await? {
+            rvec.push(des_tldm);
+        }
+        Ok(rvec)
+    }
+
+
 }
 
 /// The last hour is the default.

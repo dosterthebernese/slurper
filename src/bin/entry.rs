@@ -117,8 +117,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 let cfile = utils::ClusterFile {
                     fname: pfs.to_owned()
                 };
-                let _ = cfile.get_time_range();
-                println!("{}", cfile);
+                let tr = cfile.get_time_range();
+                println!("{} {:?}", cfile, tr);
+
             }
             let tr = utils::TimeRange::default();
             println!("{}",tr);
