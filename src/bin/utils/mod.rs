@@ -88,12 +88,21 @@ pub struct ClusterFile {
 
 impl ClusterFile {
     /// Super sensitive to the R generated pngs.  Probably best not to mess with this.
+
+    fn get_d1(self: &Self, v: &Vec<&str>) -> String {
+        format!("{}-{}-{}", v[2],v[3],v[4])
+    }
+    fn get_d2(self: &Self, v: &Vec<&str>) -> String {
+        format!("{}-{}-{}", v[5],v[6],v[7])
+    }
+
+
     pub fn get_time_range(self: &Self) -> Option<TimeRange> {
         let pfs = self.fname.split("-").collect::<Vec<&str>>();
         debug!("{:?}", pfs);
         if pfs.len() == 11 {
-            let gtedate_string = format!("{}-{}-{}", pfs[2],pfs[3],pfs[4]);
-            let ltdate_string = format!("{}-{}-{}", pfs[5],pfs[6],pfs[7]);
+            let gtedate_string = &self.get_d1(&pfs);
+            let ltdate_string = &self.get_d2(&pfs);
             debug!("{} {}", gtedate_string, ltdate_string);
             let gtedate = DateTime::parse_from_rfc3339(&gtedate_string);
             let ltdate = DateTime::parse_from_rfc3339(&ltdate_string);
@@ -114,6 +123,30 @@ impl ClusterFile {
             None
         }
     } 
+
+    pub fn get_market(self: &Self) -> Option<String> {
+        let pfs = self.fname.split("-").collect::<Vec<&str>>();
+        debug!("{:?}", pfs);
+        if pfs.len() == 11 {
+            Some(format!("{}-{}",pfs[0].to_owned(),pfs[1].to_owned()))
+        } else {
+            warn!("Invalid file format - length is {:?}", pfs.len());
+            None
+        }
+    } 
+
+    pub fn get_hash(self: &Self) -> Option<String> {
+        let pfs = self.fname.split("-").collect::<Vec<&str>>();
+        debug!("{:?}", pfs);
+        if pfs.len() == 11 {
+            Some(format!("{}-{}-{}-{}",&self.get_d1(&pfs), &self.get_d2(&pfs), pfs[0].to_owned(),pfs[1].to_owned()))
+        } else {
+            warn!("Invalid file format - length is {:?}", pfs.len());
+            None
+        }
+    } 
+
+
 }
 
 impl fmt::Display for ClusterFile {
@@ -132,20 +165,6 @@ pub struct TimeRange {
 }
 
 impl TimeRange {
-
-    // Use this when tracking ranges in an iteration - the self has to be defined as mut to work
-    pub fn adjust(self: &mut TimeRange, d: &DateTime<Utc>) -> bool {        
-        let mut adj = false;
-        if self.gtedate > *d {
-            self.gtedate = *d;
-            adj = true
-        }
-        if self.ltdate < *d {
-            self.ltdate = *d;
-            adj = true
-        }
-        adj
-    }
 
     // Use this for cleanup.  Assuming no data 1000000 (mm) before today.
     pub fn annihilation() -> Self {

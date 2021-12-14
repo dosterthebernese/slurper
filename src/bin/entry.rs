@@ -9,6 +9,7 @@ mod phemex;
 mod config;
 mod utils;
 
+use std::collections::HashSet;
 
 use time::Duration as NormalDuration;
 use dydx::TLDYDXMarket;
@@ -17,7 +18,7 @@ use mongodb::{Client};
 use time::Duration;
 use std::{fs};
 //use std::fs::File;
-use std::path::{Path,PathBuf};
+use std::path::{PathBuf};
 
 use crate::config::Config;
 
@@ -88,22 +89,29 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         m: ms
     };
 
-    let gtedate = match matches.value_of("GTEDATE") {
-        Some(setting) => {
-            match setting {
-                "hour" => Some(3600000),
-                "fiver" => Some(30000000), // 500 minutes                
-                "day" => Some(86400000), // 24 hours
-                _ => Some(86400000) // 24 hours
-            }
-        },
-        _ => None
-    };
+
+
+    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+
+    // let gtedate = match matches.value_of("GTEDATE") {
+    //     Some(setting) => {
+    //         match setting {
+    //             "hour" => Some(3600000),
+    //             "fiver" => Some(30000000), // 500 minutes                
+    //             "day" => Some(86400000), // 24 hours
+    //             _ => Some(86400000) // 24 hours
+    //         }
+    //     },
+    //     _ => None
+    // };
 
     match matches.value_of("INPUT").unwrap() {
 
         "poc" => {
 
+
+            let mut no_repeat = HashSet::new();
+            
             let r = r"../../tradellama/public/images/clusters";
             let r_as_pb = PathBuf::from(&r);
 
@@ -118,11 +126,28 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     fname: pfs.to_owned()
                 };
                 let tr = cfile.get_time_range();
-                println!("{} {:?}", cfile, tr);
+                let mkt = cfile.get_market();
+                let hash = cfile.get_hash();
+                debug!("the hash for no mas post 1 is {:?}", hash);
+
+                let pop = match (tr, mkt, hash) {
+                    (Some(t), Some(m), Some(h)) => {
+                        println!("{} {:?} {:?}", t, m, h);
+                        no_repeat.insert(h.clone()); // unwrap ok cause you'd not be in here if no results
+                        Some(t.get_trades(&m,&dydxcol).await?)
+                    },
+                    _ => None
+                };
+
+                debug!("no repeat = {:?}", no_repeat);
+                if let Some(p) = pop {
+                    let vec_index_price: Vec<f64> = p.into_iter().map(|p| p.index_price).collect();
+                    debug!("{:?}", vec_index_price)
+                };
 
             }
-            let tr = utils::TimeRange::default();
-            println!("{}",tr);
+
+
         },
 
         "list-perpetuals-phemex" => {
@@ -187,44 +212,66 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
 
         "iov-dydx" => {
-            let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), 
-                snap_count: 180,
-            };
-            iopv.index_oracle_volatility(&dydxcol).await?
+
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.index_oracle_volatility(&dydxcol).await?
+            }
         },
 
 
         "iopv-dydx" => {
-            let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), 
-                snap_count: 180,
-            };
-            iopv.index_oracle_price_volatility(&dydxcol).await?
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.index_oracle_price_volatility(&dydxcol).await?
+            }
         },
 
         "oipv-dydx" => {
-            let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
-                snap_count: 180,
-            };
-            iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
+
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
+            }
         },
 
         "oipv-v2-dydx" => {
-            let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
-                snap_count: 180,
-            };
-            iopv.open_interest_price_volatility_v2("/tmp/cluster_bomb_triple_oipv_v2.csv",&dydxcol).await?
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.open_interest_price_volatility_v2("/tmp/cluster_bomb_triple_oipv_v2.csv",&dydxcol).await?
+            }
         },
 
         "nfrpv-dydx" => {
-            let iopv = dydx::ClusterConfiguration {
-                gtedate: Utc::now() - Duration::milliseconds(gtedate.unwrap()), // 60 minutes
-                snap_count: 180,
-            };
-            iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
+            }
         },
 
         "all-markets-dydx" => {

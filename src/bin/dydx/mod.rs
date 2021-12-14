@@ -317,17 +317,17 @@ pub async fn get_first_snapshot<'a>(market: &'a str) -> Result<Option<DYDXM>, Bo
 }
 
 /// Useful to have a struct for certain variables, as the data would be helpful in rendering to an artifact outside the calcs.  Note that we use a snap count as an i64, vs usual lt date, as it is a reminder of the assumption about the quotes being one second intervals.  You could add an assert that the limit is close to 100 (or equal).  This should move to utils and become useful for exchanges.  
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct ClusterConfiguration {
-    #[serde(with = "chrono_datetime_as_bson_datetime")]
     pub gtedate: DateTime<Utc>,
+    pub ltdate: DateTime<Utc>,
     pub snap_count: i64 // I could use the less than model, but this is a reminder that this is a 1 second assumption on each snap
 }
 
 impl ClusterConfiguration {
 
     async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
-        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate}};
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate},"mongo_snapshot_date": {"$lt": self.ltdate}};
         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
         let mut cursor = dydxcol.find(filter, find_options).await?;
         let mut sss: Vec<TLDYDXMarket> = Vec::new();
@@ -347,17 +347,8 @@ impl ClusterConfiguration {
         let mut wtr = Writer::from_path(fname)?;
         let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        let mut tr = utils::TimeRange{
-            gtedate: Utc::now(),
-            ltdate: Utc::now()
-        };
-
         for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
-
-            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
             
-            tr.adjust(&quote_date);
-
             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
                 market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
@@ -375,16 +366,16 @@ impl ClusterConfiguration {
             warn!("Not yet 10 mins");
         }                    
         for (key,value) in market_vectors {
-            info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
             let km_for_v_duo = do_duo_kmeans(&value);                    
             debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
             for (idx, kg) in km_for_v_duo.iter().enumerate() {
                 debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
                 let new_cluster_bomb = ClusterBomb {
                     market: &key,
-                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
                     float_one: value[idx*2],
                     float_two: value[(idx*2)+1],
                     group: *kg
@@ -410,16 +401,8 @@ impl ClusterConfiguration {
 
         let mut wtr3 = Writer::from_path(fname)?;
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut tr = utils::TimeRange{
-            gtedate: Utc::now(),
-            ltdate: Utc::now()
-        };
 
         for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
-
-            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-
-            tr.adjust(&quote_date);
 
             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
@@ -444,16 +427,16 @@ impl ClusterConfiguration {
             warn!("I really cannot say.");
         }                    
         for (key,value) in market_vectors_triple {
-            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
             let km_for_v_triple = do_triple_kmeans(&value);                    
             debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
             for (idx, kg) in km_for_v_triple.iter().enumerate() {
                 debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
                 let new_cluster_bomb = ClusterBombTriple {
                     market: &key,
-                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
                     float_one: value[idx*3],
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
@@ -478,16 +461,9 @@ impl ClusterConfiguration {
 
         let mut wtr3 = Writer::from_path(tfile)?;
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut tr = utils::TimeRange{
-            gtedate: Utc::now(),
-            ltdate: Utc::now()
-        };
 
         for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
 
-            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-            
-            tr.adjust(&quote_date);
 
             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
@@ -513,16 +489,16 @@ impl ClusterConfiguration {
             warn!("I really cannot say.");
         }                    
         for (key,value) in market_vectors_triple {
-            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
             let km_for_v_triple = do_triple_kmeans(&value);                    
             debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
             for (idx, kg) in km_for_v_triple.iter().enumerate() {
                 debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
                 let new_cluster_bomb = ClusterBombTriple {
                     market: &key,
-                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
                     float_one: value[idx*3],
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
@@ -546,16 +522,8 @@ impl ClusterConfiguration {
 
         let mut wtr3 = Writer::from_path(tfile)?;
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut tr = utils::TimeRange{
-            gtedate: Utc::now(),
-            ltdate: Utc::now()
-        };
 
         for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
-
-            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-            
-            tr.adjust(&quote_date);
 
             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
@@ -581,16 +549,16 @@ impl ClusterConfiguration {
             warn!("I really cannot say.");
         }                    
         for (key,value) in market_vectors_triple {
-            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
             let km_for_v_triple = do_triple_kmeans(&value);                    
             debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
             for (idx, kg) in km_for_v_triple.iter().enumerate() {
                 debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
                 let new_cluster_bomb = ClusterBombTriple {
                     market: &key,
-                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
                     float_one: value[idx*3],
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
@@ -617,16 +585,8 @@ impl ClusterConfiguration {
 
         let mut wtr3 = Writer::from_path(tfile)?;
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut tr = utils::TimeRange{
-            gtedate: Utc::now(),
-            ltdate: Utc::now()
-        };
 
         for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
-
-            let quote_date = DateTime::parse_from_rfc3339(&des_tldm.snapshot_date).unwrap().with_timezone(&Utc);
-            
-            tr.adjust(&quote_date);
 
             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
@@ -652,16 +612,16 @@ impl ClusterConfiguration {
             warn!("I really cannot say.");
         }                    
         for (key,value) in market_vectors_triple {
-            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, tr.gtedate, tr.ltdate);
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
             let km_for_v_triple = do_triple_kmeans(&value);                    
             debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
             for (idx, kg) in km_for_v_triple.iter().enumerate() {
                 debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
                 let new_cluster_bomb = ClusterBombTriple {
                     market: &key,
-                    min_date: &tr.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &tr.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: tr.ltdate.signed_duration_since(tr.gtedate).num_minutes(),
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
                     float_one: value[idx*3],
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
