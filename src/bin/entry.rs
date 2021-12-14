@@ -114,7 +114,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 // let os_str = Path::new(&path_filename).as_os_str();
                 // let split = os_str.split("/");
                 let pfs = path_filename.split("/").collect::<Vec<&str>>()[6];
-                debug!("{:?}", pfs);
+                let cfile = utils::ClusterFile {
+                    fname: pfs.to_owned()
+                };
+                let _ = cfile.get_time_range();
+                println!("{}", cfile);
             }
             let tr = utils::TimeRange::default();
             println!("{}",tr);

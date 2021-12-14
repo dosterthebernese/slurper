@@ -81,6 +81,47 @@ pub fn  get_time_ranges<'a>(
     Ok(time_ranges)
 }
 
+/// This is a really sensitive struct - pretty much a hack, so do NOT expect a lot of error handling.  It's looking for files created by the UI app image generator, an R library.
+pub struct ClusterFile {
+    pub fname: String
+}
+
+impl ClusterFile {
+    /// Super sensitive to the R generated pngs.  Probably best not to mess with this.
+    pub fn get_time_range(self: &Self) -> Option<TimeRange> {
+        let pfs = self.fname.split("-").collect::<Vec<&str>>();
+        debug!("{:?}", pfs);
+        if pfs.len() == 11 {
+            let gtedate_string = format!("{}-{}-{}", pfs[2],pfs[3],pfs[4]);
+            let ltdate_string = format!("{}-{}-{}", pfs[5],pfs[6],pfs[7]);
+            debug!("{} {}", gtedate_string, ltdate_string);
+            let gtedate = DateTime::parse_from_rfc3339(&gtedate_string);
+            let ltdate = DateTime::parse_from_rfc3339(&ltdate_string);
+
+            match (gtedate, ltdate) {
+                (Ok(g), Ok(l)) => {
+                    let tr = TimeRange{
+                        gtedate: g.with_timezone(&Utc),
+                        ltdate: l.with_timezone(&Utc)
+                    };
+                    println!("{}", tr);
+                    Some(tr)
+                },
+                _ => None
+            }
+        } else {
+            warn!("Invalid file format - length is {:?}", pfs.len());
+            None
+        }
+    } 
+}
+
+impl fmt::Display for ClusterFile {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:>10}", &self.fname)
+    }
+}
+
 
 /// Very useful - set a begin and end, and have generic collections for calls in the methods.  Note that you get away with the complete generic on collection, because not finding (not needing any data parm knowledge).
 /// So all methods need to be very grandiose, like delete all.
