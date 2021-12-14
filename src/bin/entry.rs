@@ -90,20 +90,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     };
 
 
-
     let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 
-    // let gtedate = match matches.value_of("GTEDATE") {
-    //     Some(setting) => {
-    //         match setting {
-    //             "hour" => Some(3600000),
-    //             "fiver" => Some(30000000), // 500 minutes                
-    //             "day" => Some(86400000), // 24 hours
-    //             _ => Some(86400000) // 24 hours
-    //         }
-    //     },
-    //     _ => None
-    // };
 
     match matches.value_of("INPUT").unwrap() {
 
@@ -237,6 +225,20 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
 
+
+        "nfrpv-dydx" => {
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
+            }
+        },
+
+
         "oipv-dydx" => {
 
             for tr in time_ranges{
@@ -262,17 +264,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
             }
         },
 
-        "nfrpv-dydx" => {
-            for tr in time_ranges{
-                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
-                let iopv = dydx::ClusterConfiguration {
-                    gtedate: tr.gtedate, 
-                    ltdate: tr.ltdate, 
-                    snap_count: 180,
-                };
-                iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
-            }
-        },
 
         "all-markets-dydx" => {
 

@@ -31,6 +31,8 @@ pub struct ClusterBomb<'a> {
     pub min_date: &'a str,
     pub max_date: &'a str,
     pub minutes: i64,
+    pub interval_return: f64,
+    pub interval_std: f64,
     pub float_one: f64,
     pub float_two: f64,
     pub group: i32
@@ -40,8 +42,8 @@ pub struct ClusterBomb<'a> {
 
 impl fmt::Display for ClusterBomb<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>2}", 
-            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.group)
+        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>2}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.interval_return, self.interval_std, self.float_one, self.float_two, self.group)
     }   
 }
  
@@ -51,6 +53,8 @@ pub struct ClusterBombTriple<'a> {
     pub min_date: &'a str,
     pub max_date: &'a str,
     pub minutes: i64,
+    pub interval_return: f64,
+    pub interval_std: f64,
     pub float_one: f64,
     pub float_two: f64,
     pub float_three: f64,
@@ -61,8 +65,8 @@ pub struct ClusterBombTriple<'a> {
 
 impl fmt::Display for ClusterBombTriple<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>2}", 
-            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.float_three, self.group)
+        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>2}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.interval_return, self.interval_std, self.float_one, self.float_two, self.float_three, self.group)
     }   
 }
  
