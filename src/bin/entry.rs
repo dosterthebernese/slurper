@@ -15,7 +15,9 @@ use dydx::TLDYDXMarket;
 use mongodb::{Client};
 
 use time::Duration;
-
+use std::{fs};
+//use std::fs::File;
+use std::path::{Path,PathBuf};
 
 use crate::config::Config;
 
@@ -101,6 +103,19 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     match matches.value_of("INPUT").unwrap() {
 
         "poc" => {
+
+            let r = r"../../tradellama/public/images/clusters";
+            let r_as_pb = PathBuf::from(&r);
+
+            for entry in fs::read_dir(&r_as_pb)? {
+                let entry = entry?;
+                let path = entry.path();
+                let path_filename = format!("{}", path.display());
+                // let os_str = Path::new(&path_filename).as_os_str();
+                // let split = os_str.split("/");
+                let pfs = path_filename.split("/").collect::<Vec<&str>>()[6];
+                debug!("{:?}", pfs);
+            }
             let tr = utils::TimeRange::default();
             println!("{}",tr);
         },
