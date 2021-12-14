@@ -327,7 +327,8 @@ pub struct ClusterConfiguration {
 impl ClusterConfiguration {
 
     async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
-        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate},"mongo_snapshot_date": {"$lt": self.ltdate}};
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate, "$lt": self.ltdate}};
+        debug!("{:?}", filter);
         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
         let mut cursor = dydxcol.find(filter, find_options).await?;
         let mut sss: Vec<TLDYDXMarket> = Vec::new();
