@@ -339,6 +339,15 @@ impl ClusterConfiguration {
     }
 
 
+    fn sixlet(self: &Self, vfs: &[f64]) -> (f64,f64,f64,f64,f64,f64) {
+        let beginning_index_price = vfs[0];
+        let ending_index_price = vfs[vfs.len()-1];
+        let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
+        let index_prices_std = std_deviation(&vfs).unwrap_or(0.); // no bueno
+        let index_prices_mean = mean(&vfs).unwrap_or(1.); // no bueno
+        let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
+        (beginning_index_price,ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std)
+    }
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
     pub async fn index_oracle_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
@@ -370,16 +379,9 @@ impl ClusterConfiguration {
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
             debug!("ipsk");
-            let beginning_index_price = &ipsv[0];
-            let ending_index_price = &ipsv[&ipsv.len()-1];
-            let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
-            let index_prices_std = std_deviation(&ipsv).unwrap_or(0.); // no bueno
-            let index_prices_mean = mean(&ipsv).unwrap_or(1.); // no bueno
-            let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
-            index_prices_tuple.insert(ipsk.clone(),(*beginning_index_price,*ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std));
+            let stup = self.sixlet(&ipsv);
+            index_prices_tuple.insert(ipsk.clone(),stup);
         }
-
-
 
         if market_vectors.is_empty() {
             warn!("Not yet 10 mins");
@@ -453,13 +455,8 @@ impl ClusterConfiguration {
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
             debug!("ipsk");
-            let beginning_index_price = &ipsv[0];
-            let ending_index_price = &ipsv[&ipsv.len()-1];
-            let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
-            let index_prices_std = std_deviation(&ipsv).unwrap_or(0.); // no bueno
-            let index_prices_mean = mean(&ipsv).unwrap_or(1.); // no bueno
-            let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
-            index_prices_tuple.insert(ipsk.clone(),(*beginning_index_price,*ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std));
+            let stup = self.sixlet(&ipsv);
+            index_prices_tuple.insert(ipsk.clone(),stup);
         }
 
 
@@ -540,13 +537,8 @@ impl ClusterConfiguration {
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
             debug!("ipsk");
-            let beginning_index_price = &ipsv[0];
-            let ending_index_price = &ipsv[&ipsv.len()-1];
-            let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
-            let index_prices_std = std_deviation(&ipsv).unwrap_or(0.); // no bueno
-            let index_prices_mean = mean(&ipsv).unwrap_or(1.); // no bueno
-            let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
-            index_prices_tuple.insert(ipsk.clone(),(*beginning_index_price,*ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std));
+            let stup = self.sixlet(&ipsv);
+            index_prices_tuple.insert(ipsk.clone(),stup);
         }
 
 
@@ -624,13 +616,8 @@ impl ClusterConfiguration {
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
             debug!("ipsk");
-            let beginning_index_price = &ipsv[0];
-            let ending_index_price = &ipsv[&ipsv.len()-1];
-            let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
-            let index_prices_std = std_deviation(&ipsv).unwrap_or(0.); // no bueno
-            let index_prices_mean = mean(&ipsv).unwrap_or(1.); // no bueno
-            let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
-            index_prices_tuple.insert(ipsk.clone(),(*beginning_index_price,*ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std));
+            let stup = self.sixlet(&ipsv);
+            index_prices_tuple.insert(ipsk.clone(),stup);
         }
 
 
@@ -710,13 +697,8 @@ impl ClusterConfiguration {
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
             debug!("ipsk");
-            let beginning_index_price = &ipsv[0];
-            let ending_index_price = &ipsv[&ipsv.len()-1];
-            let index_performance = (ending_index_price - beginning_index_price) / beginning_index_price;
-            let index_prices_std = std_deviation(&ipsv).unwrap_or(0.); // no bueno
-            let index_prices_mean = mean(&ipsv).unwrap_or(1.); // no bueno
-            let index_prices_normalized_std = index_prices_std / index_prices_mean; // that's really no bueno BUT likely never not going to have a return :)
-            index_prices_tuple.insert(ipsk.clone(),(*beginning_index_price,*ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std));
+            let stup = self.sixlet(&ipsv);
+            index_prices_tuple.insert(ipsk.clone(),stup);
         }
 
 
