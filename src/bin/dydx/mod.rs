@@ -503,9 +503,14 @@ impl ClusterConfiguration {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (absolute), price (post).
-    pub async fn open_interest_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+    pub async fn open_interest_price_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let mut wtr3 = Writer::from_path(tfile)?;
+
+        let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","oipv");
+
+        let mut wtr3 = Writer::from_path(fname)?;
+
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
@@ -581,9 +586,15 @@ impl ClusterConfiguration {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
-    pub async fn open_interest_price_volatility_v2<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+    pub async fn open_interest_price_volatility_v2<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let mut wtr3 = Writer::from_path(tfile)?;
+        let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","oipvv2");
+
+        let mut wtr3 = Writer::from_path(fname)?;
+
+
+
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
@@ -663,9 +674,13 @@ impl ClusterConfiguration {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
-    pub async fn funding_rate_price_volatility<'a>(self: &Self, tfile: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
+    pub async fn funding_rate_price_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let mut wtr3 = Writer::from_path(tfile)?;
+        let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","nfrpv");
+
+        let mut wtr3 = Writer::from_path(fname)?;
+
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 

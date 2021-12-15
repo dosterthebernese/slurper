@@ -226,19 +226,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
 
 
-        "nfrpv-dydx" => {
-            for tr in time_ranges{
-                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
-                let iopv = dydx::ClusterConfiguration {
-                    gtedate: tr.gtedate, 
-                    ltdate: tr.ltdate, 
-                    snap_count: 180,
-                };
-                iopv.funding_rate_price_volatility("/tmp/cluster_bomb_triple_nfrpv.csv",&dydxcol).await?
-            }
-        },
-
-
         "oipv-dydx" => {
 
             for tr in time_ranges{
@@ -248,7 +235,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     ltdate: tr.ltdate, 
                     snap_count: 180,
                 };
-                iopv.open_interest_price_volatility("/tmp/cluster_bomb_triple_oipv.csv",&dydxcol).await?
+                iopv.open_interest_price_volatility(&dydxcol).await?
             }
         },
 
@@ -260,7 +247,21 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     ltdate: tr.ltdate, 
                     snap_count: 180,
                 };
-                iopv.open_interest_price_volatility_v2("/tmp/cluster_bomb_triple_oipv_v2.csv",&dydxcol).await?
+                iopv.open_interest_price_volatility_v2(&dydxcol).await?
+            }
+        },
+
+
+
+        "nfrpv-dydx" => {
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.funding_rate_price_volatility(&dydxcol).await?
             }
         },
 
