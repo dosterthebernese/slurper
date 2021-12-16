@@ -326,8 +326,8 @@ pub struct ClusterConfiguration {
 
 impl ClusterConfiguration {
 
-    async fn get_range_of_quotes(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
-        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate, "$lt": self.ltdate}};
+    async fn get_range_of_quotes<'a>(self: &Self, market: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate, "$lt": self.ltdate}, "market":market};
         debug!("{:?}", filter);
         let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
         let mut cursor = dydxcol.find(filter, find_options).await?;
@@ -356,25 +356,24 @@ impl ClusterConfiguration {
         let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_","iov");
 
         let mut wtr = Writer::from_path(fname)?;
+
         let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
-            
-            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                debug!("inserted into the double {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn);
+        // we do it by market to make the mongo queries more manageable
+        for mkt in dydx::get_markets().await.unwrap() {
+            for (cnt, des_tldm) in self.get_range_of_quotes(&mkt.market, dydxcol).await?.iter().enumerate() {
+                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                    debug!("inserted into the double {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn);
+                }
+                debug!("{} {}", market_vectors.len(), cnt);
             }
-
-            debug!("{} {}", market_vectors.len(), cnt);
-
         }
-
-
 
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
@@ -428,29 +427,46 @@ impl ClusterConfiguration {
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+        for mkt in dydx::get_markets().await.unwrap() {
 
-            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
-                if let Some(snaps) = vfut {
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                    let fut_index_price = snaps[snaps.len()-1].index_price;
-                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+            let tldmv = self.get_range_of_quotes(&mkt.market,dydxcol).await?;
+
+            for (cnt, des_tldm) in tldmv.iter().enumerate() {
+
+                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+
+
+                    // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
+                    let differential_padding = 1000;
+                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
+                    let vfut = if (differential_cnt as i64) < differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
+                    } else {
+                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
+                    };
+
+
+                    if let Some(snaps) = vfut {
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                        let fut_index_price = snaps[snaps.len()-1].index_price;
+                        let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                        debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                    }
+
                 }
-
+                debug!("{} {}", market_vectors_triple.len(), cnt);
             }
-
-
-
-            debug!("{} {}", market_vectors_triple.len(), cnt);
-
         }
+
+
 
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
@@ -511,26 +527,50 @@ impl ClusterConfiguration {
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+
+        for mkt in dydx::get_markets().await.unwrap() {
+
+            let tldmv = self.get_range_of_quotes(&mkt.market,dydxcol).await?;
+
+    //        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+            for (cnt, des_tldm) in tldmv.iter().enumerate() {
+
+                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
 
 
-            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
-                if let Some(snaps) = vfut {
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.open_interest);
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                    let fut_index_price = snaps[snaps.len()-1].index_price;
-                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+
+                    // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
+                    let differential_padding = 1000;
+                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
+                    let vfut = if (differential_cnt as i64) < differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
+                    } else {
+                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
+                    };
+
+
+                    if let Some(snaps) = vfut {
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.open_interest);
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                        let fut_index_price = snaps[snaps.len()-1].index_price;
+                        let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                        debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                    }
+
                 }
+
+                debug!("{} {}", market_vectors_triple.len(), cnt);
 
             }
 
-            debug!("{} {}", market_vectors_triple.len(), cnt);
+
 
         }
 
@@ -590,26 +630,41 @@ impl ClusterConfiguration {
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
 
-            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
-                if let Some(snaps) = vfut {
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.));
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                    let fut_index_price = snaps[snaps.len()-1].index_price;
-                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+        for mkt in dydx::get_markets().await.unwrap() {
+            let tldmv = self.get_range_of_quotes(&mkt.market,dydxcol).await?;
+    //        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+            for (cnt, des_tldm) in tldmv.iter().enumerate() {
+                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+
+                    // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
+                    let differential_padding = 1000;
+                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
+                    let vfut = if (differential_cnt as i64) < differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
+                    } else {
+                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
+                    };
+
+
+                    if let Some(snaps) = vfut {
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.));
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                        let fut_index_price = snaps[snaps.len()-1].index_price;
+                        let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                        debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                    }
+
                 }
-
+                debug!("{} {}", market_vectors_triple.len(), cnt);
             }
-
-            debug!("{} {}", market_vectors_triple.len(), cnt);
-
         }
 
 
@@ -671,28 +726,41 @@ impl ClusterConfiguration {
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
 
-            if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                let vfut = des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?;
-                if let Some(snaps) = vfut {
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.next_funding_rate);
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                    let fut_index_price = snaps[snaps.len()-1].index_price;
-                    let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                    market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                    debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+
+        for mkt in dydx::get_markets().await.unwrap() {
+            let tldmv = self.get_range_of_quotes(&mkt.market,dydxcol).await?;
+    //        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
+            for (cnt, des_tldm) in tldmv.iter().enumerate() {
+                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+
+                    // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
+                    let differential_padding = 1000;
+                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
+                    let vfut = if (differential_cnt as i64) < differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
+                    } else {
+                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
+                    };
+
+                    if let Some(snaps) = vfut {
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.next_funding_rate);
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                        let fut_index_price = snaps[snaps.len()-1].index_price;
+                        let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                        debug!("inserted into the triple {} {} {}", des_tldm.tl_derived_index_oracle_spread, vol / mn, delta);
+                    }
                 }
-
+                debug!("{} {}", market_vectors_triple.len(), cnt);
             }
-
-            debug!("{} {}", market_vectors_triple.len(), cnt);
-
         }
-
 
         let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         for (ipsk,ipsv) in &index_prices {
@@ -841,6 +909,16 @@ impl TLDYDXMarket {
         }
 
     }
+
+    /// this doesn't really need to be a method of tldydxmarket but it's a trial for opt anyways
+    pub fn get_next_n_snapshots_from_vec(self: &Self, cnt: i64, n: i64, v: &Vec<TLDYDXMarket>) -> Option<Vec<TLDYDXMarket>> {
+        let mut sss: Vec<TLDYDXMarket> = Vec::new();
+        for i in cnt..cnt+n {
+            sss.push(v[i as usize].clone());
+        }
+        Some(sss)
+    }
+
 }
 
 
@@ -933,3 +1011,76 @@ pub struct DYDXMarkets {
     #[serde(rename(deserialize = "markets"))]
     pub markets: HashMap<String,DYDXMarket>
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+
+    use mongodb::Client;
+    use super::*;
+
+    #[tokio::test]
+    async fn dydx_opt_forward_price() {
+
+        env_logger::init(); 
+
+        // almost all use mongo, so declaring for all options
+        let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await.expect("holy sheep shit");
+        let database = client.database(&Config::from_env().expect("Server configuration").tldb);
+        let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+
+        let time_ranges = utils::get_time_ranges("2021-12-13 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+        for tr in time_ranges{
+            let iopv = dydx::ClusterConfiguration {
+                gtedate: tr.gtedate, 
+                ltdate: tr.ltdate, 
+                snap_count: 180,
+            };
+
+            for mkt in dydx::get_markets().await.unwrap() {
+                let tldmv = iopv.get_range_of_quotes(&mkt.market,&dydxcol).await.expect("shit");
+                debug!("mkt: {:?} {:?}", mkt.market, tldmv.len());
+                for (cnt, des_tldm) in tldmv.iter().enumerate() {
+                    if cnt == 10000 {
+                        let vfut = des_tldm.get_next_n_snapshots(iopv.snap_count,&dydxcol).await.expect("holy holy");
+                        let vfutalt = des_tldm.get_next_n_snapshots_from_vec(cnt as i64,iopv.snap_count,&tldmv).unwrap();
+                        if let Some(snaps) = vfut {
+                            let fut_index_price = snaps[snaps.len()-1].index_price;
+                            let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                            let alt_fut_index_price = vfutalt[vfutalt.len()-1].index_price;
+                            let alt_delta = (alt_fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+                            debug!("{:?} {:?}", delta, alt_delta);
+                            assert_eq!(delta, alt_delta);
+                        }
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+
+    #[tokio::test]
+    async fn dydx_still_has_markets() {
+        let mkts = dydx::get_markets().await.expect("holy sheep shit");
+        assert_ne!(0,mkts.len())
+    }
+
+
+}
+
+
