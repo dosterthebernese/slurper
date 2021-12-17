@@ -90,7 +90,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     };
 
 
-    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-13 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+//    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-13 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-15 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 //    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 // need to catch up oipv and nfrpv
 //    let time_ranges = utils::get_time_ranges("2021-12-13 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
