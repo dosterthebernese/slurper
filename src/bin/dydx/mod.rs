@@ -438,16 +438,15 @@ impl ClusterConfiguration {
                     let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
                     let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
 
-
                     // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
                     let differential_padding = 1000;
-                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cnt = (tldmv.len()-cnt) as i64;
                     let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
-                    let vfut = if (differential_cnt as i64) < differential_cutoff {
-                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                    let vfut = if differential_cnt > differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
                     } else {
-                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        debug!("using the old method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
                     };
 
@@ -544,13 +543,13 @@ impl ClusterConfiguration {
 
                     // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
                     let differential_padding = 1000;
-                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cnt = (tldmv.len()-cnt) as i64;
                     let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
-                    let vfut = if (differential_cnt as i64) < differential_cutoff {
-                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                    let vfut = if differential_cnt > differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
                     } else {
-                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        debug!("using the old method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
                     };
 
@@ -642,13 +641,13 @@ impl ClusterConfiguration {
 
                     // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
                     let differential_padding = 1000;
-                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cnt = (tldmv.len()-cnt) as i64;
                     let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
-                    let vfut = if (differential_cnt as i64) < differential_cutoff {
-                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                    let vfut = if differential_cnt > differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
                     } else {
-                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        debug!("using the old method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
                     };
 
@@ -739,13 +738,13 @@ impl ClusterConfiguration {
 
                     // this will use the existing vector of snapshots, till it gets close to the backend (ltdate), as then it needs to query beyond (in the 3min world kind of silly but forward look can be configured longer at some point)
                     let differential_padding = 1000;
-                    let differential_cnt = tldmv.len()-cnt;
+                    let differential_cnt = (tldmv.len()-cnt) as i64;
                     let differential_cutoff = (28*self.snap_count) + differential_padding; // 28 pairs * snap count which is the lookahead, plust some padding
-                    let vfut = if (differential_cnt as i64) < differential_cutoff {
-                        debug!("using the new method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                    let vfut = if differential_cnt > differential_cutoff {
+                        debug!("using the new method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots_from_vec(cnt as i64, self.snap_count,&tldmv)
                     } else {
-                        debug!("using the old method at: {:?} {:?} {:?} {:?}", cnt, self.snap_count, differential_cnt, differential_cutoff);
+                        debug!("using the old method at: {:?} {:?} {:?} {:?} {:?}", &mkt.market, cnt, self.snap_count, differential_cnt, differential_cutoff);
                         des_tldm.get_next_n_snapshots(self.snap_count,&dydxcol).await?
                     };
 
