@@ -202,14 +202,47 @@ impl PhemexAuth {
                     let contract_size = perps.unwrap()[&p.symbol].contract_size;
                     let current_md = get_market_data(&p.symbol).await?;
                     let current_market_price = current_md.mark_price as f64 / 10000.00;
-                    debug!("current market price is: {}", current_market_price);
+                    println!(" mp: {}", current_market_price);
                 //                let pos = (p.size as f64 * contract_size) * p.mark_price;
                     let _pos = (p.size as f64 * contract_size) * current_market_price;
-                    let _upl = if p.side == "Buy" {
+                    let upl = if p.side == "Buy" {
                         ((p.size as f64 * contract_size) * current_market_price) - ((p.size as f64 * contract_size) * p.avg_entry_price)
                     } else {
                         ((p.size as f64 * contract_size) * p.avg_entry_price) - ((p.size as f64 * contract_size) * current_market_price)
                     };
+                    println!("upl: {}\n", upl);
+
+
+                    // should be elsehwere but in dev
+                    if p.side == "Buy" && upl > 3. {
+                        info!("over 3 dollar gain, could limit sell at {} {} contracts", current_market_price, contract_size);
+                        let exp_for_sell = (Utc::now() + NormalDuration::milliseconds(10000)).timestamp();
+                        let expstr_for_sell = &exp_for_sell.to_string();            
+                        let order = Order {
+                            action_by: "FromOrderPlacement".to_string(),
+                            symbol: p.symbol,
+                            client_order_id: "".to_string(),
+                            side: "Sell".to_string(),
+                            price_ep: current_md.mark_price,
+                            quantity: p.size as f64,
+                            order_type: "Limit".to_string()
+                        };
+
+                        let params_for_sell = serde_json::to_string(&order)?;
+                        let request_url_for_sell = format!("{}",PLACE_ORDER_URL);
+                        let msg_for_sell = format!("{}{}{}", PLACE_ORDER_MSG,&expstr_for_sell,params_for_sell);
+
+                        let mut signed_key_for_sell = Hmac::<Sha256>::new_from_slice(&self.phemex_token.as_bytes()).unwrap();
+                        signed_key_for_sell.update(msg_for_sell.as_bytes());
+                        let signature_for_sell = hex_encode(signed_key_for_sell.finalize().into_bytes());            
+
+                        let client_for_sell = reqwest::Client::builder().build()?;
+                        let response = client_for_sell.post(&request_url_for_sell).header("x-phemex-access-token", &self.phemex_id).header("x-phemex-request-expiry", exp_for_sell).header("x-phemex-request-signature", signature_for_sell).json(&params_for_sell).body(params_for_sell.to_owned()).send().await?;
+                        let payload = response.text().await?;
+                        debug!("{:?}", payload);
+
+                    }
+
 
                 }
             },
@@ -487,7 +520,7 @@ pub struct PhemexPosition {
 
 impl fmt::Display for PhemexPosition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4}", self.symbol, self.side, self.size, self.mark_price_ep, self.mark_price)
+        write!(f, "{:<10} {:<10} {:>10} {:>10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>0.10}", self.symbol, self.side, self.size, self.mark_price_ep, self.mark_price, self.liquidation_price_ep, self.liquidation_price_ep as f64 / 10000., self.avg_entry_price_ep, self.avg_entry_price, ((self.mark_price - self.avg_entry_price) / self.avg_entry_price))
     }
 }
 

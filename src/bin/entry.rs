@@ -92,6 +92,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 //    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-13 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
     let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-15 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+//    let time_ranges = utils::get_time_ranges("2021-12-13 00:00:00","2021-12-15 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 //    let time_ranges = utils::get_time_ranges("2021-12-12 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 // need to catch up oipv and nfrpv
 //    let time_ranges = utils::get_time_ranges("2021-12-13 00:00:00","2021-12-14 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
@@ -259,7 +260,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         },
 
 
-
         "nfrpv-dydx" => {
             for tr in time_ranges{
                 info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
@@ -269,6 +269,18 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     snap_count: 180,
                 };
                 iopv.funding_rate_price_volatility(&dydxcol).await?
+            }
+        },
+
+        "vdpv-dydx" => {
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);        
+                let iopv = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                iopv.volatility_delta_price_volatility(&dydxcol).await?
             }
         },
 

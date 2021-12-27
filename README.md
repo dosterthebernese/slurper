@@ -48,6 +48,7 @@ https://kafka.apache.org/quickstart
 
 ./bin/kafka-topics.sh --create --topic dydx-markets --partitions 10 --replication-factor 1 --bootstrap-server localhost:9092 --config retention.ms=86400000
 
+note the above has retention of 24 hours, so need to run consumer in that window - at least once daily
 
 
 ./bin/kafka-topics.sh --create --topic phemex-perpetuals-open-interest --partitions 10 --replication-factor 1 --bootstrap-server localhost:9092
