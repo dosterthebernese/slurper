@@ -349,69 +349,72 @@ impl ClusterConfiguration {
         (beginning_index_price,ending_index_price,index_performance,index_prices_std,index_prices_mean,index_prices_normalized_std)
     }
 
-    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
-    pub async fn index_oracle_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-        let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_","iov");
 
-        let mut wtr = Writer::from_path(fname)?;
+    // commented out as the 2 dimensional look is a waste of computing
+    // /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
+    // pub async fn index_oracle_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
-        let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+    //     let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    //     let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_","iov");
 
-        // we do it by market to make the mongo queries more manageable
-        for mkt in dydx::get_markets().await.unwrap() {
-            for (cnt, des_tldm) in self.get_range_of_quotes(&mkt.market, dydxcol).await?.iter().enumerate() {
-                if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
-                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                    let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
-                    let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
-                    market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
-                }
-                debug!("{} {}", market_vectors.len(), cnt);
-            }
-        }
+    //     let mut wtr = Writer::from_path(fname)?;
 
-        let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        for (ipsk,ipsv) in &index_prices {
-            debug!("ipsk");
-            let stup = self.sixlet(&ipsv);
-            index_prices_tuple.insert(ipsk.clone(),stup);
-        }
+    //     let mut market_vectors: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+    //     let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
-        if market_vectors.is_empty() {
-            warn!("Not yet 10 mins");
-        }                    
-        for (key,value) in market_vectors {
-            info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
-            let km_for_v_duo = do_duo_kmeans(&value);                    
-            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
+    //     // we do it by market to make the mongo queries more manageable
+    //     for mkt in dydx::get_markets().await.unwrap() {
+    //         for (cnt, des_tldm) in self.get_range_of_quotes(&mkt.market, dydxcol).await?.iter().enumerate() {
+    //             if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
+    //                 index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
+    //                 market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
+    //                 let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
+    //                 let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
+    //                 market_vectors.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+    //             }
+    //             debug!("{} {}", market_vectors.len(), cnt);
+    //         }
+    //     }
 
-            for (idx, kg) in km_for_v_duo.iter().enumerate() {
-                debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
-                let new_cluster_bomb = ClusterBomb {
-                    market: &key,
-                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
-                    interval_return: index_prices_tuple[&key].2,
-                    interval_std: index_prices_tuple[&key].5,                    
-                    float_one: value[idx*2],
-                    float_two: value[(idx*2)+1],
-                    group: *kg
-                };
-                println!("{}", new_cluster_bomb);
-                wtr.serialize(new_cluster_bomb)?;
+    //     let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+    //     for (ipsk,ipsv) in &index_prices {
+    //         debug!("ipsk");
+    //         let stup = self.sixlet(&ipsv);
+    //         index_prices_tuple.insert(ipsk.clone(),stup);
+    //     }
 
-            }
-        }
+    //     if market_vectors.is_empty() {
+    //         warn!("Not yet 10 mins");
+    //     }                    
+    //     for (key,value) in market_vectors {
+    //         info!("{} has {} which is {} data points, on range {} to {}.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
+    //         let km_for_v_duo = do_duo_kmeans(&value);                    
+    //         debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_duo.len(), key, value.len(), value.len() as f64 * 0.5);
 
-        wtr.flush()?;
-        Ok(())
+    //         for (idx, kg) in km_for_v_duo.iter().enumerate() {
+    //             debug!("{} from {} {}", kg, &value[idx*2], &value[(idx*2)+1]);
+    //             let new_cluster_bomb = ClusterBomb {
+    //                 market: &key,
+    //                 min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+    //                 max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+    //                 minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
+    //                 interval_return: index_prices_tuple[&key].2,
+    //                 interval_std: index_prices_tuple[&key].5,                    
+    //                 float_one: value[idx*2],
+    //                 float_two: value[(idx*2)+1],
+    //                 group: *kg
+    //             };
+    //             println!("{}", new_cluster_bomb);
+    //             wtr.serialize(new_cluster_bomb)?;
 
-    }
+    //         }
+    //     }
+
+    //     wtr.flush()?;
+    //     Ok(())
+
+    // }
 
 
 
