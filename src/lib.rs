@@ -27,6 +27,7 @@ use rand_isaac::Isaac64Rng;
 pub const THE_SOURCE_THING_LAST_UPDATE_COLLECTION: &str = "sourcethinglastupdate";
 pub const THE_CRYPTO_TRADES_COLLECTION: &str = "crypto_trades";
 pub const THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION: &str = "tldydxsnap";
+pub const THE_TRADELLAMA_DYDX_ORDERBOOK_COLLECTION: &str = "tldydxorderbook";
 
 
 // kinda dead jim

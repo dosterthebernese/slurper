@@ -15,6 +15,7 @@ use time::Duration;
 use std::convert::TryFrom;
 
 const MARKETS_URL: &str = "https://api.dydx.exchange/v3/markets";
+const ORDERBOOK_URL: &str = "https://api.dydx.exchange/v3/orderbook";
 
 
 
@@ -39,6 +40,35 @@ pub async fn get_markets() -> Result<Vec<DYDXMarket>, Box<dyn Error>> {
     Ok(rvec)
 } 
 
+/// This is used to fetch an order book for a market - you could have made it a member of the DYDXMarket, but then you're in the async map issue of returning an owned async item, blah.  Better this way.
+pub async fn get_orderbook(market: String) -> Result<TLDYDXOrderbook, Box<dyn Error>> {
+    let request_url = format!("{}/{}", ORDERBOOK_URL, market);
+    let response = reqwest::get(&request_url).await?;
+    let payload: DYDXOrderbook = response.json().await?;
+
+    let mut asks: Vec<(f64,f64)> = Vec::new();
+    let mut bids: Vec<(f64,f64)> = Vec::new();
+
+    for ask in &payload.asks {
+        let ask_size = ask.size.parse::<f64>().unwrap();
+        let ask_price = ask.price.parse::<f64>().unwrap();
+        asks.push((ask_size,ask_price));
+    }
+    for bid in &payload.bids {
+        let bid_size = bid.size.parse::<f64>().unwrap();
+        let bid_price = bid.price.parse::<f64>().unwrap();
+        bids.push((bid_size,bid_price));
+    }
+
+    let tld = TLDYDXOrderbook {
+        market: market,
+        mongo_snapshot_date: Utc::now(),
+        asks: asks,
+        bids: bids
+    };
+
+    Ok(tld)
+}
 
 
 
@@ -1022,6 +1052,8 @@ impl TLDYDXMarket {
         Some(sss)
     }
 
+
+
 }
 
 
@@ -1050,6 +1082,35 @@ impl fmt::Display for TLDYDXMarket {
             self.instrument_type, 
             self.initial_margin_fraction, self.maintenance_margin_fraction, self.baseline_position_size, self.incremental_position_size, self.incremental_initial_margin_fraction, self.volume_24h, self.trades_24h, self.open_interest, self.max_position_size, self.asset_resolution)
     }
+}
+
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TLDYDXOrderbook {
+    pub market: String,
+    #[serde(with = "chrono_datetime_as_bson_datetime")]
+    pub mongo_snapshot_date: DateTime<Utc>,
+    //size, price
+    pub asks:  Vec<(f64,f64)>,
+    //size, price
+    pub bids:  Vec<(f64,f64)>
+}
+
+
+/// This is the basic object for consuming the endpoint, as the api has most things as Strings
+#[derive(Deserialize, Debug, Clone)]
+pub struct DYDXOrder {
+    pub size: String,
+    pub price: String
+}
+
+
+/// This is the basic object for consuming the endpoint, as the api has most things as Strings
+#[derive(Deserialize, Debug, Clone)]
+pub struct DYDXOrderbook {
+    pub asks: Vec<DYDXOrder>,
+    pub bids: Vec<DYDXOrder>,
 }
 
 /// This is the basic object for consuming the endpoint, as the api has most things as Strings
@@ -1101,6 +1162,7 @@ pub struct DYDXMarket {
     pub asset_resolution: String,
 
 }
+
 
 impl fmt::Display for DYDXMarket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

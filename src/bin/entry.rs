@@ -13,6 +13,7 @@ use std::collections::HashSet;
 
 use time::Duration as NormalDuration;
 use dydx::TLDYDXMarket;
+use dydx::TLDYDXOrderbook;
 use mongodb::{Client};
 
 use time::Duration;
@@ -108,46 +109,27 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
     match matches.value_of("INPUT").unwrap() {
 
+        // skipping the kafka pub sub, as 1 it's a pain, and 2, i don't think kafka can take big long arrays
+        // will probably regret later
         "poc" => {
 
 
-            let mut no_repeat = HashSet::new();
-            
-            let r = r"../../tradellama/public/images/clusters";
-            let r_as_pb = PathBuf::from(&r);
+            let dcol: Vec<_> = dydx::get_markets().await.unwrap().into_iter().map(|item| dydx::get_orderbook(item.market)).collect();
+            let rvec = join_all(dcol).await;
+            debug!("{:?}", rvec);
 
-            for entry in fs::read_dir(&r_as_pb)? {
-                let entry = entry?;
-                let path = entry.path();
-                let path_filename = format!("{}", path.display());
-                // let os_str = Path::new(&path_filename).as_os_str();
-                // let split = os_str.split("/");
-                let pfs = path_filename.split("/").collect::<Vec<&str>>()[6];
-                let cfile = utils::ClusterFile {
-                    fname: pfs.to_owned()
-                };
-                let tr = cfile.get_time_range();
-                let mkt = cfile.get_market();
-                let hash = cfile.get_hash();
-                debug!("the hash for no mas post 1 is {:?}", hash);
-
-                let pop = match (tr, mkt, hash) {
-                    (Some(t), Some(m), Some(h)) => {
-                        println!("{} {:?} {:?}", t, m, h);
-                        no_repeat.insert(h.clone()); // unwrap ok cause you'd not be in here if no results
-                        Some(t.get_trades(&m,&dydxcol).await?)
+            for (idx, r) in rvec.iter().enumerate() {
+                match r {
+                    Ok(tldo) => {
+                        debug!("inserting {:?}", tldo);
+                        let _result = database.collection::<TLDYDXOrderbook>(THE_TRADELLAMA_DYDX_ORDERBOOK_COLLECTION).insert_one(tldo, None).await?;                                                                                                    
                     },
-                    _ => None
-                };
-
-                debug!("no repeat = {:?}", no_repeat);
-                if let Some(p) = pop {
-                    let vec_index_price: Vec<f64> = p.into_iter().map(|p| p.index_price).collect();
-                    debug!("{:?}", vec_index_price)
-                };
-
+                    Err(error) => {
+                        error!("Err index {:?} Error: {:?}", idx+1,  error);
+                        panic!("We choose to no longer live.")                            
+                    }
+                }
             }
-
 
         },
 
@@ -303,6 +285,46 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
             kdydx.process_all_markets().await?;
         },
+
+
+        "orderbooks-dydx" => {
+
+            info!("remember, straight to mongo this one");
+
+            let markets = dydx::get_markets().await.unwrap().into_iter();
+
+            let cap = 10000000;
+            let mut tmpcnt = 0;
+            loop {
+                if tmpcnt == cap {
+                    break;
+                } else {
+                    tmpcnt+=1;
+                }
+
+                let dcol: Vec<_> = markets.clone().map(|item| dydx::get_orderbook(item.market)).collect();
+                let rvec = join_all(dcol).await;
+                debug!("{:?}", rvec);
+
+                for (idx, r) in rvec.iter().enumerate() {
+                    match r {
+                        Ok(tldo) => {
+                            debug!("inserting {:?}", tldo);
+                            let _result = database.collection::<TLDYDXOrderbook>(THE_TRADELLAMA_DYDX_ORDERBOOK_COLLECTION).insert_one(tldo, None).await?;                                                                                                    
+                        },
+                        Err(error) => {
+                            error!("Err index {:?} Error: {:?}", idx+1,  error);
+                            panic!("We choose to no longer live.")                            
+                        }
+                    }
+                }
+
+            }
+
+        },
+
+
+
 
         _ => error!("Unrecognized input parm."),
     }
