@@ -290,6 +290,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         "orderbooks-dydx" => {
 
             info!("remember, straight to mongo this one");
+            info!("this process should be daemonized");
+            info!("adding two zeros to the await interval compared to the market snapshots");
+            let mut interval = TokioTime::interval(TokioDuration::from_millis(100000));
 
             let markets = dydx::get_markets().await.unwrap().into_iter();
 
@@ -318,7 +321,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
-
+                interval.tick().await; 
             }
 
         },
