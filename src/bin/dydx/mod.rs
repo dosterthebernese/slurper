@@ -356,6 +356,44 @@ pub struct ClusterConfiguration {
 
 impl ClusterConfiguration {
 
+    /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  We do NOT need to process that with the consumer, as it doesn't have a real time need.  It writes a double kmeans return set to one cluster bomb, and a triple (with perf) to another.  You cannot  use generic collection, need the supporting struct (vs TimeRange), because you're using find.
+    pub async fn poc_orderbook<'a>(self: &Self, dydxcol: &Collection<TLDYDXOrderbook>) -> Result<(), Box<dyn Error>> {
+
+        // let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        // let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","iopv");
+        // let mut wtr3 = Writer::from_path(fname)?;
+        // let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        // let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+
+        for mkt in dydx::get_markets().await.unwrap() {
+
+            let tldmv = self.poc_get_orderbook(&mkt.market,dydxcol).await?;
+
+            for (cnt, tlob) in tldmv.iter().enumerate() {
+                debug!("{:?}, {}", cnt, tlob);
+            }
+        }
+
+
+        Ok(())
+
+    }
+
+
+    async fn poc_get_orderbook<'a>(self: &Self, market: &'a str, dydxcol: &Collection<TLDYDXOrderbook>) -> Result<Vec<TLDYDXOrderbook>, MongoError> {
+        let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate, "$lt": self.ltdate}, "market":market};
+        debug!("{:?}", filter);
+        let find_options = FindOptions::builder().sort(doc! { "mongo_snapshot_date":1}).build();
+        let mut cursor = dydxcol.find(filter, find_options).await?;
+        let mut sss: Vec<TLDYDXOrderbook> = Vec::new();
+        while let Some(des_tldm) = cursor.try_next().await? {
+            sss.push(des_tldm);
+        }
+        Ok(sss)
+    }
+
+
+
     async fn get_range_of_quotes<'a>(self: &Self, market: &'a str, dydxcol: &Collection<TLDYDXMarket>) -> Result<Vec<TLDYDXMarket>, MongoError> {
         let filter = doc! {"mongo_snapshot_date": {"$gte": self.gtedate, "$lt": self.ltdate}, "market":market};
         debug!("{:?}", filter);
@@ -1096,6 +1134,15 @@ pub struct TLDYDXOrderbook {
     //size, price
     pub bids:  Vec<(f64,f64)>
 }
+
+impl fmt::Display for TLDYDXOrderbook {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:>10} {:>10} ", self.market, self.mongo_snapshot_date,self.asks.len(), self.bids.len())
+    }
+}
+
+
+
 
 
 /// This is the basic object for consuming the endpoint, as the api has most things as Strings

@@ -23,6 +23,12 @@ After pulling the repo, run cargo doc in src dir, and then in target, you can fi
 LOCAL_MONGO=mongodb://localhost:27017
 TLDB=tradellama
 
+### Rust
+
+https://doc.rust-lang.org/cargo/getting-started/installation.html
+
+curl https://sh.rustup.rs -sSf | sh
+
 ### Mongo
 
 Used to track runs against coinmetrics, but will probably use for other things as well...NOT NEEDED FOR DYDX
@@ -31,13 +37,23 @@ https://docs.mongodb.com/manual/tutorial/install-mongodb-on-ubuntu/
 
 ### Kafka
 
+sudo apt install default-jdk
+
 https://kafka.apache.org/quickstart
 
 ### start kafka
 
 ./bin/zookeeper-server-start.sh config/zookeeper.properties
 
+in background
+
+nohup ./bin/zookeeper-server-start.sh config/zookeeper.properties &
+
 ./bin/kafka-server-start.sh config/server.properties
+
+in background
+
+nohup ./bin/kafka-server-start.sh config/server.properties &
 
 
 ### Stuff to do with Kafka

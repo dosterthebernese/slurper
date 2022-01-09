@@ -74,6 +74,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
     let client = Client::with_uri_str(&Config::from_env().expect("Server configuration").local_mongo).await?;
     let database = client.database(&Config::from_env().expect("Server configuration").tldb);
     let dydxcol = database.collection::<TLDYDXMarket>(THE_TRADELLAMA_DYDX_SNAPSHOT_COLLECTION);            
+    let dydxobcol = database.collection::<TLDYDXOrderbook>(THE_TRADELLAMA_DYDX_ORDERBOOK_COLLECTION);            
 
     let ms = utils::MongoSpecs {
         client: &client,
@@ -104,7 +105,8 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 
 //    let time_ranges = utils::get_time_ranges("2021-12-27 00:00:00","2021-12-31 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 //    let time_ranges = utils::get_time_ranges("2021-12-31 00:00:00","2022-01-03 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
-    let time_ranges = utils::get_time_ranges("2022-01-03 00:00:00","2022-01-06 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+//    let time_ranges = utils::get_time_ranges("2022-01-03 00:00:00","2022-01-06 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+    let time_ranges = utils::get_time_ranges("2022-01-06 00:00:00","2022-01-08 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 
 
     match matches.value_of("INPUT").unwrap() {
@@ -113,23 +115,16 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         // will probably regret later
         "poc" => {
 
-
-            let dcol: Vec<_> = dydx::get_markets().await.unwrap().into_iter().map(|item| dydx::get_orderbook(item.market)).collect();
-            let rvec = join_all(dcol).await;
-            debug!("{:?}", rvec);
-
-            for (idx, r) in rvec.iter().enumerate() {
-                match r {
-                    Ok(tldo) => {
-                        debug!("inserting {:?}", tldo);
-                        let _result = database.collection::<TLDYDXOrderbook>(THE_TRADELLAMA_DYDX_ORDERBOOK_COLLECTION).insert_one(tldo, None).await?;                                                                                                    
-                    },
-                    Err(error) => {
-                        error!("Err index {:?} Error: {:?}", idx+1,  error);
-                        panic!("We choose to no longer live.")                            
-                    }
-                }
+            for tr in time_ranges{
+                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
+                let obshit = dydx::ClusterConfiguration {
+                    gtedate: tr.gtedate, 
+                    ltdate: tr.ltdate, 
+                    snap_count: 180,
+                };
+                obshit.poc_orderbook(&dydxobcol).await?
             }
+
 
         },
 
