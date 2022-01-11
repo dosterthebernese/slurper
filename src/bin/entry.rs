@@ -122,7 +122,7 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                     ltdate: tr.ltdate, 
                     snap_count: 180,
                 };
-                obshit.poc_orderbook(&dydxobcol).await?
+                obshit.orderbook_spread_price_volatility(&dydxcol,&dydxobcol).await?
             }
 
 
