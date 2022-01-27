@@ -72,6 +72,32 @@ impl fmt::Display for ClusterBombTriple<'_> {
  
 
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClusterBombTripleBonused<'a> {
+    pub market: &'a str,
+    pub min_date: &'a str,
+    pub max_date: &'a str,
+    pub minutes: i64,
+    pub interval_return: f64,
+    pub interval_std: f64,
+    pub float_one: f64,
+    pub float_two: f64,
+    pub float_three: f64,
+    pub group: i32,
+    pub tl_derived_price_change_10m: f64
+}
+
+
+
+impl fmt::Display for ClusterBombTripleBonused<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>2} {:>10.4}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.interval_return, self.interval_std, self.float_one, self.float_two, self.float_three, self.group, self.tl_derived_price_change_10m)
+    }   
+}
+
+
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AssetPair<'a> {
