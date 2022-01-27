@@ -945,7 +945,10 @@ impl ClusterConfiguration {
 
                         if delta < 0. {
 
+                            market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vold);
+                            market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                             market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+
                             market_vectors_triple_negative_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                                 (
                                 des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
