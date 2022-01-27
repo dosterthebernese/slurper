@@ -887,7 +887,7 @@ impl ClusterConfiguration {
 
 
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut market_vectors_triple_bonused: Vec<(f64,f64,String)> = Vec::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut market_vectors_triple_bonused: HashMap<String, Vec<(f64,f64,String)>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
 
@@ -927,13 +927,14 @@ impl ClusterConfiguration {
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
                         market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
-                        market_vectors_triple_bonused.push(
+                        market_vectors_triple_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                             (
                             des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
                             des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
                             des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                             )
                         );
+                        
                     }
 
                 }
@@ -972,9 +973,9 @@ impl ClusterConfiguration {
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
                     group: *kg,
-                    tl_derived_price_change_10m: market_vectors_triple_bonused[idx].0,
-                    tl_derived_open_interest_change_10m: market_vectors_triple_bonused[idx].1,
-                    mongo_snapshot_date: &market_vectors_triple_bonused[idx].2
+                    tl_derived_price_change_10m: market_vectors_triple_bonused[&key][idx].0,
+                    tl_derived_open_interest_change_10m: market_vectors_triple_bonused[&key][idx].1,
+                    mongo_snapshot_date: &market_vectors_triple_bonused[&key][idx].2
                 };
                 println!("{}", new_cluster_bomb);
                 wtr3.serialize(new_cluster_bomb)?;
