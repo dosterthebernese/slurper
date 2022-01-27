@@ -881,13 +881,19 @@ impl ClusterConfiguration {
     pub async fn volatility_delta_price_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
         let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-        let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","vdpv");
+        let fname_all = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","vdpv");
+        let fname_negative = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","negvdpv");
 
-        let mut wtr3 = Writer::from_path(fname)?;
+        let mut wtr_all_deltas = Writer::from_path(fname_all)?;
+        let mut wtr_negative_deltas = Writer::from_path(fname_negative)?;
 
 
         let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
         let mut market_vectors_triple_bonused: HashMap<String, Vec<(f64,f64,String)>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+
+        let mut market_vectors_triple_negative: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+        let mut market_vectors_triple_negative_bonused: HashMap<String, Vec<(f64,f64,String)>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
+
         let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
 
@@ -926,6 +932,7 @@ impl ClusterConfiguration {
                         market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
+
                         market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
                         market_vectors_triple_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                             (
@@ -934,6 +941,22 @@ impl ClusterConfiguration {
                             des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                             )
                         );
+
+
+                        if delta < 0. {
+
+                            market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+                            market_vectors_triple_negative_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
+                                (
+                                des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
+                                des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
+                                des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
+                                )
+                            );
+
+
+                        }
+
                         
                     }
 
@@ -978,12 +1001,50 @@ impl ClusterConfiguration {
                     mongo_snapshot_date: &market_vectors_triple_bonused[&key][idx].2
                 };
                 println!("{}", new_cluster_bomb);
-                wtr3.serialize(new_cluster_bomb)?;
+                wtr_all_deltas.serialize(new_cluster_bomb)?;
 
             }
         }
 
-        wtr3.flush()?;
+
+
+
+
+
+        if market_vectors_triple_negative.is_empty() {
+            warn!("I really cannot say.");
+        }                    
+        for (key,value) in market_vectors_triple_negative {
+
+            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
+            let km_for_v_triple = do_triple_kmeans(&value);                    
+            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
+            for (idx, kg) in km_for_v_triple.iter().enumerate() {
+                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
+                let new_cluster_bomb = ClusterBombTripleBonused {
+                    market: &key,
+                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
+                    interval_return: index_prices_tuple[&key].2,
+                    interval_std: index_prices_tuple[&key].5,                    
+                    float_one: value[idx*3],
+                    float_two: value[(idx*3)+1],
+                    float_three: value[(idx*3)+2],
+                    group: *kg,
+                    tl_derived_price_change_10m: market_vectors_triple_negative_bonused[&key][idx].0,
+                    tl_derived_open_interest_change_10m: market_vectors_triple_negative_bonused[&key][idx].1,
+                    mongo_snapshot_date: &market_vectors_triple_negative_bonused[&key][idx].2
+                };
+                println!("{}", new_cluster_bomb);
+                wtr_negative_deltas.serialize(new_cluster_bomb)?;
+
+            }
+        }
+
+
+        wtr_all_deltas.flush()?;
+        wtr_negative_deltas.flush()?;
         Ok(())
 
     }
