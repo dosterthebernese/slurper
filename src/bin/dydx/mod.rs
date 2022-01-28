@@ -999,7 +999,7 @@ impl ClusterConfiguration {
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
                     group: *kg,
-                    tl_derived_price_change_10m: market_vectors_triple_bonused[&key][idx].0,
+                    tl_derived_price_change_1m: market_vectors_triple_bonused[&key][idx].0,
                     tl_derived_open_interest_change_10m: market_vectors_triple_bonused[&key][idx].1,
                     mongo_snapshot_date: &market_vectors_triple_bonused[&key][idx].2
                 };
