@@ -943,7 +943,7 @@ impl ClusterConfiguration {
                         );
 
 
-                        if delta < 0. {
+                        if vold < 0. {
 
                             market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vold);
                             market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
