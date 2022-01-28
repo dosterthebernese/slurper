@@ -94,7 +94,7 @@ pub struct ClusterBombTripleBonused<'a> {
 impl fmt::Display for ClusterBombTripleBonused<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:<10} {:<10} {:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>2} {:>10.4}", 
-            self.market, self.min_date, self.max_date, self.minutes, self.interval_return, self.interval_std, self.float_one, self.float_two, self.float_three, self.group, self.tl_derived_price_change_10m)
+            self.market, self.min_date, self.max_date, self.minutes, self.interval_return, self.interval_std, self.float_one, self.float_two, self.float_three, self.group, self.tl_derived_price_change_1m)
     }   
 }
 
