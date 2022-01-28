@@ -929,7 +929,7 @@ impl ClusterConfiguration {
                         debug!("10 1m and vold: {} {} {}", vol10m, vol1m, vold);
 
                         market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vold);
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_price_change_10m.unwrap_or(0.));
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
 
@@ -937,7 +937,7 @@ impl ClusterConfiguration {
                         market_vectors_triple_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                             (
                             des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
-                            des_tldm.tl_derived_open_interest_change_1m.unwrap_or(0.),
+                            des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
                             des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                             )
                         );
@@ -945,13 +945,14 @@ impl ClusterConfiguration {
 
                         if vold < 0. {
 
+                            // the negative can use the vol del abs for size, and you can then cluster t10 perf, vold delta, and price delta - can do same with the > 0.
                             market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vold);
-                            market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                            market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.));
                             market_vectors_triple_negative.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
 
                             market_vectors_triple_negative_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                                 (
-                                des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
+                                des_tldm.tl_derived_price_change_1m.unwrap_or(0.),
                                 des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
                                 des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                                 )
