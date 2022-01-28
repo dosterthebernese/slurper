@@ -84,7 +84,7 @@ pub struct ClusterBombTripleBonused<'a> {
     pub float_two: f64,
     pub float_three: f64,
     pub group: i32,
-    pub tl_derived_price_change_10m: f64,
+    pub tl_derived_price_change_1m: f64,
     pub tl_derived_open_interest_change_10m: f64,
     pub mongo_snapshot_date: &'a str
 }

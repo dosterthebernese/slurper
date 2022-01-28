@@ -929,7 +929,7 @@ impl ClusterConfiguration {
                         debug!("10 1m and vold: {} {} {}", vol10m, vol1m, vold);
 
                         market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vold);
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
+                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_price_change_10m.unwrap_or(0.));
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
 
@@ -937,7 +937,7 @@ impl ClusterConfiguration {
                         market_vectors_triple_bonused.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(
                             (
                             des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
-                            des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
+                            des_tldm.tl_derived_open_interest_change_1m.unwrap_or(0.),
                             des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                             )
                         );
@@ -1035,7 +1035,7 @@ impl ClusterConfiguration {
                     float_two: value[(idx*3)+1],
                     float_three: value[(idx*3)+2],
                     group: *kg,
-                    tl_derived_price_change_10m: market_vectors_triple_negative_bonused[&key][idx].0,
+                    tl_derived_price_change_1m: market_vectors_triple_negative_bonused[&key][idx].0,
                     tl_derived_open_interest_change_10m: market_vectors_triple_negative_bonused[&key][idx].1,
                     mongo_snapshot_date: &market_vectors_triple_negative_bonused[&key][idx].2
                 };
