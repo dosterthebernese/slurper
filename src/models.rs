@@ -34,7 +34,8 @@ pub struct ThreeDimensionalExtract<'a> {
     pub float_one: f64,
     pub float_two: f64,
     pub float_three: f64,
-    pub mongo_snapshot_date: &'a str
+    pub mongo_snapshot_date: &'a str,
+    pub index_price: f64
 }
 
 
