@@ -27,7 +27,7 @@ use slurper::*;
 use log::{info,debug,warn,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{ClusterBomb,ClusterBombTriple,ClusterBombTripleBonused};
+use self::models::{ClusterBomb,ClusterBombTriple,ClusterBombTripleBonused,ThreeDimensionalExtract};
 use futures::future::join_all;
 use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval

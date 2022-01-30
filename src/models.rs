@@ -24,6 +24,29 @@ use std::fmt; // Import `fmt`
 use std::fmt::Error as NormalError;
 
 
+///Assumes Kmeans in R
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ThreeDimensionalExtract<'a> {
+    pub market: &'a str,
+    pub min_date: &'a str,
+    pub max_date: &'a str,
+    pub minutes: i64,
+    pub float_one: f64,
+    pub float_two: f64,
+    pub float_three: f64,
+}
+
+
+
+impl fmt::Display for ThreeDimensionalExtract<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.float_three)
+    }   
+}
+ 
+
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClusterBomb<'a> {
