@@ -34,14 +34,15 @@ pub struct ThreeDimensionalExtract<'a> {
     pub float_one: f64,
     pub float_two: f64,
     pub float_three: f64,
+    pub mongo_snapshot_date: &'a str
 }
 
 
 
 impl fmt::Display for ThreeDimensionalExtract<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4}", 
-            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.float_three)
+        write!(f, "{:<10} {:<10} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10.4} {:>10}", 
+            self.market, self.min_date, self.max_date, self.minutes, self.float_one, self.float_two, self.float_three, self.mongo_snapshot_date)
     }   
 }
  

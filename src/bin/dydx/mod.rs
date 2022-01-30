@@ -542,6 +542,7 @@ impl ClusterConfiguration {
                             float_one: des_tldm.tl_derived_index_oracle_spread,
                             float_two: vol / mn,
                             float_three: delta,
+                            mongo_snapshot_date: &des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true)
                         };
                         wtr3.serialize(new_3de)?;
                     }
