@@ -110,7 +110,11 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
 //    let time_ranges = utils::get_time_ranges("2022-01-09 00:00:00","2022-01-13 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 //    let time_ranges = utils::get_time_ranges("2022-01-13 00:00:00","2022-01-16 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 //    let time_ranges = utils::get_time_ranges("2022-01-16 00:00:00","2022-01-20 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
-    let time_ranges = utils::get_time_ranges("2022-01-20 00:00:00","2022-01-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+
+// temp
+    let time_ranges = utils::get_time_ranges("2022-01-25 00:00:00","2022-01-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
+
+    //let time_ranges = utils::get_time_ranges("2022-01-20 00:00:00","2022-01-28 00:00:00","%Y-%m-%d %H:%M:%S",&1).unwrap();
 
 
     match matches.value_of("INPUT").unwrap() {
