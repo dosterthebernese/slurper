@@ -500,8 +500,6 @@ impl ClusterConfiguration {
         let fname = format!("{}{}-{}{}.csv","/tmp/",hack_for_fname,"cluster_bomb_triple_","iopv");
 
         let mut wtr3 = Writer::from_path(fname)?;
-        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
 
         for mkt in dydx::get_markets().await.unwrap() {
 
@@ -510,7 +508,6 @@ impl ClusterConfiguration {
             for (cnt, des_tldm) in tldmv.iter().enumerate() {
 
                 if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
                     let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
                     let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
 
@@ -528,11 +525,8 @@ impl ClusterConfiguration {
 
 
                     if let Some(snaps) = vfut {
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.tl_derived_index_oracle_spread);
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
 
                         let new_3de = ThreeDimensionalExtract { // now doing the kmeans in R
                             market: &des_tldm.market,
@@ -766,17 +760,12 @@ impl ClusterConfiguration {
 
         let mut wtr3 = Writer::from_path(fname)?;
 
-        let mut market_vectors_triple: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        let mut index_prices: HashMap<String, Vec<f64>> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-
-
 
         for mkt in dydx::get_markets().await.unwrap() {
             let tldmv = self.get_range_of_quotes(&mkt.market,dydxcol).await?;
     //        for (cnt, des_tldm) in self.get_range_of_quotes(dydxcol).await?.iter().enumerate() {
             for (cnt, des_tldm) in tldmv.iter().enumerate() {
                 if let Some(_vol10m) = des_tldm.tl_derived_price_vol_10m { // you can use the 10m check or any of them, as obviously narrow bands would exist
-                    index_prices.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.index_price);
                     let vol = des_tldm.tl_derived_price_vol_10m.unwrap_or(0.);       // change this uwrap should check for none and not insert either HACK
                     let mn = des_tldm.tl_derived_price_mean_10m.unwrap_or(1.);       // change this uwrap should check for none and not insert either, cannot divide by zero HACK                                             
 
@@ -793,49 +782,23 @@ impl ClusterConfiguration {
                     };
 
                     if let Some(snaps) = vfut {
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(des_tldm.next_funding_rate);
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(vol / mn);
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
-                        market_vectors_triple.entry(des_tldm.market.to_string()).or_insert(Vec::new()).push(delta);
+
+                        let new_3de = ThreeDimensionalExtract { // now doing the kmeans in R
+                            market: &des_tldm.market,
+                            min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                            max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
+                            minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
+                            float_one: des_tldm.next_funding_rate,
+                            float_two: vol / mn,
+                            float_three: delta,
+                            mongo_snapshot_date: &des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true),
+                            index_price: des_tldm.index_price
+                        };
+                        wtr3.serialize(new_3de)?;
                     }
                 }
-                debug!("{} {}", market_vectors_triple.len(), cnt);
-            }
-        }
-
-        let mut index_prices_tuple: HashMap<String, (f64,f64,f64,f64,f64,f64)> = HashMap::new(); // forced to spell out type, to use len calls, otherwise would have to loop a get markets return set
-        for (ipsk,ipsv) in &index_prices {
-            debug!("ipsk");
-            let stup = self.sixlet(&ipsv);
-            index_prices_tuple.insert(ipsk.clone(),stup);
-        }
-
-
-        if market_vectors_triple.is_empty() {
-            warn!("I really cannot say.");
-        }                    
-        for (key,value) in market_vectors_triple {
-            info!("{} has {} which is {} data points, on range {} to {} - BAD calc, cause it's thirds.", key, value.len(), value.len() as f64 * 0.5, self.gtedate, self.ltdate);
-            let km_for_v_triple = do_triple_kmeans(&value);                    
-            debug!("Have a return set of length {} for {} from the kmeans call, matching 1/2 {} {}.", km_for_v_triple.len(), key, value.len(), value.len() as f64 * 0.5);
-            for (idx, kg) in km_for_v_triple.iter().enumerate() {
-                debug!("{} from {} {} {}", kg, &value[idx*3], &value[(idx*3)+1], &value[(idx*3)+2]);
-                let new_cluster_bomb = ClusterBombTriple {
-                    market: &key,
-                    min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
-                    minutes: self.ltdate.signed_duration_since(self.gtedate).num_minutes(),
-                    interval_return: index_prices_tuple[&key].2,
-                    interval_std: index_prices_tuple[&key].5,                    
-                    float_one: value[idx*3],
-                    float_two: value[(idx*3)+1],
-                    float_three: value[(idx*3)+2],
-                    group: *kg
-                };
-                println!("{}", new_cluster_bomb);
-                wtr3.serialize(new_cluster_bomb)?;
-
             }
         }
 
