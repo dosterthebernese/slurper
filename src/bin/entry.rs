@@ -27,7 +27,7 @@ use slurper::*;
 use log::{info,debug,warn,error};
 use std::error::Error;
 //use std::convert::TryFrom;
-use self::models::{ClusterBomb,ClusterBombTriple,ClusterBombTripleBonused,ThreeDimensionalExtract};
+use self::models::{ClusterBomb,ClusterBombTriple,ClusterBombTripleBonused,ThreeDimensionalExtract,FourDimensionalExtract};
 use futures::future::join_all;
 use chrono::{DateTime,Utc,SecondsFormat};
 use tokio::time as TokioTime;  //renamed norm duration so could use this for interval
@@ -236,19 +236,6 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
                 iopv.open_interest_price_volatility(&dydxcol).await?
             }
         },
-
-        "oipv-v2-dydx" => {
-            for tr in time_ranges{
-                info!("Operating on range: {} {}", &tr.gtedate, &tr.ltdate);
-                let iopv = dydx::ClusterConfiguration {
-                    gtedate: tr.gtedate, 
-                    ltdate: tr.ltdate, 
-                    snap_count: 180,
-                };
-                iopv.open_interest_price_volatility_v2(&dydxcol).await?
-            }
-        },
-
 
         "nfrpv-dydx" => {
             for tr in time_ranges{
