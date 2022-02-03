@@ -723,7 +723,7 @@ impl ClusterConfiguration {
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
 
-                        let new_3de = ThreeDimensionalExtract { // now doing the kmeans in R
+                        let new_4de = FourDimensionalExtract { // now doing the kmeans in R
                             market: &des_tldm.market,
                             min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
                             max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
@@ -731,10 +731,11 @@ impl ClusterConfiguration {
                             float_one: vold,
                             float_two: vol / mn,
                             float_three: delta,
+                            float_four: des_tldm.tl_derived_price_change_10m.unwrap_or(0.),
                             mongo_snapshot_date: &des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true),
                             index_price: des_tldm.index_price
                         };
-                        wtr_all_deltas.serialize(new_3de)?;
+                        wtr_all_deltas.serialize(new_4de)?;
    
                     }
                 }
