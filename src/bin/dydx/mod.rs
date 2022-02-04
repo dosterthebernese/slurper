@@ -591,6 +591,7 @@ impl ClusterConfiguration {
 
 
     /// This will query the mongo dydx collection (migrated from kafka consumer), and build a vector for clustering, and write that return set to a csv in /tmp.  This is a trio only, open interest (trail), volatility (trail), price (post).
+    /// Making this 4 dim - that way, for negative funding rates (which have wider vol), I'd like to see the OID (open interest delta)
     pub async fn funding_rate_price_volatility<'a>(self: &Self, dydxcol: &Collection<TLDYDXMarket>) -> Result<(), Box<dyn Error>> {
 
         let hack_for_fname = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -623,7 +624,7 @@ impl ClusterConfiguration {
                         let fut_index_price = snaps[snaps.len()-1].index_price;
                         let delta = (fut_index_price - des_tldm.index_price) / des_tldm.index_price;
 
-                        let new_3de = ThreeDimensionalExtract { // now doing the kmeans in R
+                        let new_3de = FourDimensionalExtract { // now doing the kmeans in R
                             market: &des_tldm.market,
                             min_date: &self.gtedate.to_rfc3339_opts(SecondsFormat::Secs, true),
                             max_date: &self.ltdate.to_rfc3339_opts(SecondsFormat::Secs, true),
@@ -631,6 +632,7 @@ impl ClusterConfiguration {
                             float_one: des_tldm.next_funding_rate,
                             float_two: vol / mn,
                             float_three: delta,
+                            float_four: des_tldm.tl_derived_open_interest_change_10m.unwrap_or(0.),
                             mongo_snapshot_date: &des_tldm.mongo_snapshot_date.to_rfc3339_opts(SecondsFormat::Secs, true),
                             index_price: des_tldm.index_price
                         };
